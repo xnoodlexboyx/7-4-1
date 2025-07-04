@@ -79,6 +79,21 @@ def run_temperature_sweep(challenges: np.ndarray, golden: np.ndarray) -> Generat
 
 
 def main():
+    import os
+    import numpy as np
+    import pandas as pd
+    import argparse
+    import json
+    import matplotlib.pyplot as plt
+    import sys
+    sys.path.insert(0, "ppet-thesis")
+    from puf_models import ArbiterPUF
+    from stressors import apply_temperature
+    from attacks import MLAttacker
+    from analysis import (
+        bit_error_rate, uniqueness, plot_reliability_vs_temperature,
+        plot_attack_accuracy, plot_ecc_comparison
+    )
     parser = argparse.ArgumentParser(description="PUF main experiment runner")
     parser.add_argument('--regenerate', action='store_true', help='Force regeneration of challenges and golden responses')
     args = parser.parse_args()
@@ -87,6 +102,7 @@ def main():
     temps = []
     accs = []
     eccs = []
+    bers = []
     results = []
     for T, noisy, train_acc, ecc_fail in run_temperature_sweep(challenges, golden):
         # Train new attacker on noisy, evaluate on golden
@@ -94,11 +110,11 @@ def main():
         attacker.train(challenges, noisy)
         test_acc = attacker.accuracy(challenges, golden)
         ber = bit_error_rate(golden, noisy)
-        # ECC fail rate (already computed in sweep)
         print(f"Temp {T}°C: Train acc={train_acc:.3f}, Test acc={test_acc:.3f}, BER={ber:.3f}%, ECC fail={ecc_fail:.3f}")
         temps.append(T)
         accs.append(train_acc * 100)
         eccs.append(ecc_fail * 100)
+        bers.append(ber)
         results.append({
             "temperature": T,
             "train_accuracy": float(train_acc),
@@ -106,22 +122,31 @@ def main():
             "bit_error_rate": float(ber),
             "ecc_failure_rate": float(ecc_fail),
         })
-        # Save per-temp plot (attack accuracy)
-        fig = plot_attack_accuracy(np.arange(len(noisy)), (noisy > 0).astype(int) * 100)
-        fname = os.path.join(FIG_DIR, f"attack_accuracy_temp_{T}.png")
-        fig.savefig(fname, dpi=300, bbox_inches='tight')
-        plt.close(fig)
-        # Save per-temp ECC plot
-        fig2 = plot_ecc_comparison(
-            np.arange(len(noisy)),
-            (noisy > 0).astype(int) * 100,
-            (golden > 0).astype(int) * 100,
-            label1="Noisy", label2="Golden"
-        )
-        fname2 = os.path.join(FIG_DIR, f"ecc_comparison_temp_{T}.png")
-        fig2.savefig(fname2, dpi=300, bbox_inches='tight')
-        plt.close(fig2)
-    # Summary plots
+    # ECC Performance vs. Temperature summary plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(temps, [b * 100 for b in bers], marker='o', linestyle='-', label='Raw (Noisy) Response')
+    plt.plot(temps, eccs, marker='x', linestyle='--', label='Post-ECC Corrected Response')
+    plt.title('ECC Performance vs. Temperature', fontsize=16)
+    plt.xlabel('Temperature (°C)', fontsize=12)
+    plt.ylabel('Failure Rate (%)', fontsize=12)
+    plt.grid(True)
+    plt.legend(fontsize=12)
+    plt.ylim(-1, max([b * 100 for b in bers] + eccs) + 5)
+    plt.tight_layout()
+    plt.savefig(os.path.join(FIG_DIR, 'ecc_performance_vs_temperature.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    # ML Attack Accuracy vs. Temperature summary plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(temps, accs, marker='o', linestyle='-', color='r')
+    plt.title('ML Attack Accuracy vs. Temperature', fontsize=16)
+    plt.xlabel('Temperature (°C)', fontsize=12)
+    plt.ylabel('Model Accuracy (%)', fontsize=12)
+    plt.grid(True)
+    plt.ylim(80, 101)
+    plt.tight_layout()
+    plt.savefig(os.path.join(FIG_DIR, 'ml_attack_accuracy_vs_temperature.png'), dpi=300, bbox_inches='tight')
+    plt.close()
+    # Optionally, keep reliability and attack accuracy summary plots for other uses
     fig3 = plot_reliability_vs_temperature(np.array(temps), 100 - np.array(eccs))
     fname3 = os.path.join(FIG_DIR, "reliability_vs_temperature.png")
     fig3.savefig(fname3, dpi=300, bbox_inches='tight')
