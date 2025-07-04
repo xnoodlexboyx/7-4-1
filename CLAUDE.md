@@ -8,7 +8,7 @@ PPET (Physical Unclonable Function Emulation and Analysis) is a defense-oriented
 
 ## Common Commands
 
-### Core Framework
+### Current Implementation
 ```bash
 # Run main experiment with default parameters
 cd ppet-thesis && python main_experiment.py
@@ -17,25 +17,10 @@ cd ppet-thesis && python main_experiment.py
 cd ppet-thesis && python main_experiment.py --regenerate
 
 # Run individual components
-cd ppet-thesis && python puf_models.py    # Demo all PUF architectures
-cd ppet-thesis && python stressors.py     # Test all environmental stressors
-cd ppet-thesis && python attacks.py       # ML/CNN/adversarial attacks demo
+cd ppet-thesis && python puf_models.py    # Demo PUF evaluation
+cd ppet-thesis && python stressors.py     # Test temperature effects
+cd ppet-thesis && python attacks.py       # ML attacker demo
 cd ppet-thesis && python analysis.py      # Analysis utilities test
-```
-
-### Defense Scenarios
-```bash
-# Run defense-oriented scenario testing
-cd ppet-thesis && python defense_scenarios.py
-
-# Test side-channel vulnerabilities
-cd ppet-thesis && python side_channel.py
-
-# Test physical attack resistance
-cd ppet-thesis && python physical_attacks.py
-
-# Validate new PUF architectures
-python validate_new_pufs.py
 ```
 
 ### Testing

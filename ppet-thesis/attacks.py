@@ -649,5 +649,5 @@ if __name__ == "__main__":
     print(f"Ensemble attack accuracy: {multi_results['ensemble_attack']:.3f}")
     print(f"Combined attack accuracy: {multi_results['combined_attack']:.3f}")
     
-    print("\n=== All sophisticated attack tests passed! ===")
+    print("\n === All sophisticated attack tests passed! ===")
     print("PPET attack framework ready for defense-oriented PUF evaluation.")
