@@ -1,0 +1,2 @@
+[console_scripts]
+ppet-experiment = scripts.main_experiment:main
