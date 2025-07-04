@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: ppet
+Version: 0.1.0
+License-File: LICENSE.txt
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: scikit-learn
+Requires-Dist: matplotlib
+Requires-Dist: seaborn
+Dynamic: license-file
+Dynamic: requires-dist

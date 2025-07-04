@@ -1,0 +1,44 @@
+[
+  {
+    "temperature": -20,
+    "train_accuracy": 0.9967,
+    "test_accuracy": 0.9948,
+    "bit_error_rate": 0.31,
+    "ecc_failure_rate": 0.0
+  },
+  {
+    "temperature": 0,
+    "train_accuracy": 0.9978,
+    "test_accuracy": 0.9961,
+    "bit_error_rate": 0.29,
+    "ecc_failure_rate": 0.0
+  },
+  {
+    "temperature": 25,
+    "train_accuracy": 0.9968,
+    "test_accuracy": 0.9945,
+    "bit_error_rate": 0.35,
+    "ecc_failure_rate": 0.0
+  },
+  {
+    "temperature": 50,
+    "train_accuracy": 0.996,
+    "test_accuracy": 0.9942,
+    "bit_error_rate": 0.28,
+    "ecc_failure_rate": 0.0
+  },
+  {
+    "temperature": 75,
+    "train_accuracy": 0.9971,
+    "test_accuracy": 0.9953,
+    "bit_error_rate": 0.26,
+    "ecc_failure_rate": 0.0
+  },
+  {
+    "temperature": 100,
+    "train_accuracy": 0.9974,
+    "test_accuracy": 0.9953,
+    "bit_error_rate": 0.29,
+    "ecc_failure_rate": 0.0
+  }
+]
