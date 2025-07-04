@@ -2,9 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project Overview
+
+PPET (Physical Unclonable Function Emulation and Analysis) is a defense-oriented PUF emulation framework designed for security evaluation under environmental stress conditions. The framework focuses on modeling how environmental stressors affect both PUF reliability and vulnerability to ML attacks.
+
 ## Common Commands
 
-### Running Experiments
+### Current Implementation
 ```bash
 # Run main experiment with default parameters
 cd ppet-thesis && python main_experiment.py
@@ -88,4 +92,32 @@ Tests verify mathematical correctness of core algorithms:
 - Attack accuracy on known data
 - ECC simulation edge cases
 
+## Framework Extension Points
+
+The current implementation provides a solid foundation but requires expansion for thesis-level scope:
+
+### Planned Defense Applications
+- Satellite communication PUF simulation under radiation stress
+- Drone swarm authentication protocols
+- Battlefield IoT device verification
+- Supply chain hardware integrity verification
+
+### Advanced Attack Modeling
+- Side-channel attacks (power analysis, timing attacks, EM emanation)
+- Enhanced ML attacks (CNN-based, CMA-ES optimization)
+- Physical tampering scenarios (fault injection, laser manipulation)
+
+### Multi-Architecture Support
+- SRAM PUF implementation
+- Ring Oscillator PUF modeling
+- Butterfly PUF architecture
+- Hybrid/cascaded PUF designs
+
+### Enhanced Visualization
+- 3D threat surface modeling
+- Interactive defense dashboards
+- Statistical analysis with Seaborn
+- Bit-aliasing heatmaps
+
 The framework is designed for defense-oriented security research, modeling how environmental conditions affect both PUF reliability and vulnerability to ML attacks.
+
