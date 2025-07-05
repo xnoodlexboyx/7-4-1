@@ -3,3 +3,12 @@ scipy
 scikit-learn
 matplotlib
 seaborn
+plotly>=5.0.0
+pandas
+kaleido
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-mock
+pytest-timeout
+pytest-xdist
+pytest-randomly
