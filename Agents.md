@@ -258,3 +258,5 @@ Military scenario simulation functional
 Thesis-quality visualizations generating correctly 
 
 Remember: The goal is to finish the existing project, not start a new one! 
+
+ENSURE THAT ALL TEST COMMANDS WORK WITHOUT ERROR
