@@ -701,4 +701,142 @@ class EMAnalysisAttacker:
             'attack_success': attack_success,
             'n_traces': len(em_traces),
             'distance': self.distance
-        }\n\nclass MultiChannelAttacker:\n    \"\"\"\n    Multi-channel side-channel attacker combining multiple attack vectors.\n    Models sophisticated military adversaries with advanced equipment.\n    \"\"\"\n    \n    def __init__(self):\n        \"\"\"\n        Initialize multi-channel attacker.\n        \"\"\"\n        self.power_attacker = PowerAnalysisAttacker()\n        self.timing_attacker = TimingAnalysisAttacker()\n        self.em_attacker = EMAnalysisAttacker()\n        self.attack_results = {}\n    \n    def comprehensive_attack(self, puf: BasePUF, n_traces: int = 1000) -> Dict[str, Any]:\n        \"\"\"\n        Perform comprehensive multi-channel side-channel attack.\n        \n        Parameters\n        ----------\n        puf : BasePUF\n            Target PUF instance\n        n_traces : int\n            Number of traces per attack vector\n            \n        Returns\n        -------\n        Dict[str, Any]\n            Combined attack results\n        \"\"\"\n        results = {\n            'power_analysis': {},\n            'timing_analysis': {},\n            'em_analysis': {},\n            'combined_attack': {}\n        }\n        \n        # Power analysis attack\n        power_traces = self.power_attacker.collect_traces(puf, n_traces)\n        results['power_analysis']['dpa'] = self.power_attacker.perform_dpa_attack(power_traces)\n        results['power_analysis']['cpa'] = self.power_attacker.perform_cpa_attack(power_traces)\n        \n        # Timing analysis attack\n        timing_traces = self.timing_attacker.collect_timing_traces(puf, n_traces)\n        results['timing_analysis'] = self.timing_attacker.analyze_timing_correlation(timing_traces)\n        \n        # EM analysis attack\n        em_traces = self.em_attacker.collect_em_traces(puf, n_traces // 2)  # EM traces are expensive\n        results['em_analysis'] = self.em_attacker.analyze_em_leakage(em_traces)\n        \n        # Combined attack assessment\n        attack_success_count = sum([\n            results['power_analysis']['dpa']['leakage_detected'],\n            results['power_analysis']['cpa']['attack_success'],\n            results['timing_analysis']['attack_success'],\n            results['em_analysis']['attack_success']\n        ])\n        \n        combined_success_rate = attack_success_count / 4.0\n        \n        # Overall threat assessment\n        if combined_success_rate >= 0.75:\n            threat_level = 'CRITICAL'\n        elif combined_success_rate >= 0.5:\n            threat_level = 'HIGH'\n        elif combined_success_rate >= 0.25:\n            threat_level = 'MEDIUM'\n        else:\n            threat_level = 'LOW'\n        \n        results['combined_attack'] = {\n            'successful_attacks': attack_success_count,\n            'total_attacks': 4,\n            'success_rate': combined_success_rate,\n            'threat_level': threat_level,\n            'recommendation': self._generate_recommendation(threat_level)\n        }\n        \n        self.attack_results = results\n        return results\n    \n    def _generate_recommendation(self, threat_level: str) -> str:\n        \"\"\"\n        Generate defense recommendations based on threat level.\n        \n        Parameters\n        ----------\n        threat_level : str\n            Assessed threat level\n            \n        Returns\n        -------\n        str\n            Defense recommendation\n        \"\"\"\n        recommendations = {\n            'CRITICAL': 'IMMEDIATE ACTION REQUIRED: Implement hardware countermeasures, '\n                       'power filtering, temporal randomization, and physical shielding.',\n            'HIGH': 'Deploy advanced countermeasures: power line filtering, '\n                   'noise injection, and EM shielding.',\n            'MEDIUM': 'Consider basic countermeasures: power supply decoupling, '\n                     'clock randomization, and physical access controls.',\n            'LOW': 'Current defenses adequate for most threat scenarios. '\n                  'Monitor for advanced persistent threats.'\n        }\n        return recommendations.get(threat_level, 'Unknown threat level')\n\nif __name__ == \"__main__\":\n    print(\"=== PPET Side-Channel Attack Framework ===\")\n    print(\"Testing side-channel vulnerabilities for military PUF evaluation\\n\")\n    \n    # Import ML attacker for testing\n    from attacks import MLAttacker\n    \n    # Test with Arbiter PUF\n    from puf_models import ArbiterPUF\n    puf = ArbiterPUF(n_stages=64, seed=42)\n    \n    print(\"--- Power Analysis Attack ---\")\n    power_attacker = PowerAnalysisAttacker(attack_type='dpa')\n    power_traces = power_attacker.collect_traces(puf, n_traces=200)\n    dpa_result = power_attacker.perform_dpa_attack(power_traces)\n    print(f\"DPA leakage detected: {dpa_result['leakage_detected']}\")\n    print(f\"DPA p-value: {dpa_result['p_value']:.6f}\")\n    print(f\"DPA SNR: {dpa_result['snr_db']:.2f} dB\")\n    \n    cpa_result = power_attacker.perform_cpa_attack(power_traces)\n    print(f\"CPA attack success: {cpa_result['attack_success']}\")\n    print(f\"CPA max correlation: {cpa_result['max_correlation']:.4f}\")\n    \n    print(\"\\n--- Timing Analysis Attack ---\")\n    timing_attacker = TimingAnalysisAttacker()\n    timing_traces = timing_attacker.collect_timing_traces(puf, n_measurements=200)\n    timing_result = timing_attacker.analyze_timing_correlation(timing_traces)\n    print(f\"Timing attack success: {timing_result['attack_success']}\")\n    print(f\"Timing difference: {timing_result['timing_difference']:.2e} s\")\n    print(f\"Timing correlation: {timing_result['correlation']:.4f}\")\n    \n    print(\"\\n--- EM Analysis Attack ---\")\n    em_attacker = EMAnalysisAttacker()\n    em_traces = em_attacker.collect_em_traces(puf, n_traces=100)\n    em_result = em_attacker.analyze_em_leakage(em_traces)\n    print(f\"EM attack success: {em_result['attack_success']}\")\n    print(f\"EM max correlation: {em_result['max_correlation']:.4f}\")\n    print(f\"EM cluster purity: {em_result['cluster_purity']:.4f}\")\n    \n    print(\"\\n--- Comprehensive Multi-Channel Attack ---\")\n    multi_attacker = MultiChannelAttacker()\n    comprehensive_results = multi_attacker.comprehensive_attack(puf, n_traces=150)\n    \n    combined = comprehensive_results['combined_attack']\n    print(f\"Successful attacks: {combined['successful_attacks']}/{combined['total_attacks']}\")\n    print(f\"Overall success rate: {combined['success_rate']:.2f}\")\n    print(f\"Threat level: {combined['threat_level']}\")\n    print(f\"Recommendation: {combined['recommendation']}\")\n    \n    print(\"\\n=== Side-channel attack framework testing complete ===\")\n    print(\"PPET ready for comprehensive side-channel security evaluation.\")
+        }
+class MultiChannelAttacker:
+    """Multi-channel side-channel attacker combining multiple attack vectors.
+    Models sophisticated military adversaries with advanced equipment.
+    """
+
+    def __init__(self):
+        """Initialize multi-channel attacker."""
+        self.power_attacker = PowerAnalysisAttacker()
+        self.timing_attacker = TimingAnalysisAttacker()
+        self.em_attacker = EMAnalysisAttacker()
+        self.attack_results = {}
+
+    def comprehensive_attack(self, puf: BasePUF, n_traces: int = 1000) -> Dict[str, Any]:
+        """Perform comprehensive multi-channel side-channel attack.
+
+        Parameters
+        ----------
+        puf : BasePUF
+            Target PUF instance
+        n_traces : int
+            Number of traces per attack vector
+
+        Returns
+        -------
+        Dict[str, Any]
+            Combined attack results
+        """
+        results = {
+            'power_analysis': {},
+            'timing_analysis': {},
+            'em_analysis': {},
+            'combined_attack': {}
+        }
+
+        # Power analysis attack
+        power_traces = self.power_attacker.collect_traces(puf, n_traces)
+        results['power_analysis']['dpa'] = self.power_attacker.perform_dpa_attack(power_traces)
+        results['power_analysis']['cpa'] = self.power_attacker.perform_cpa_attack(power_traces)
+
+        # Timing analysis attack
+        timing_traces = self.timing_attacker.collect_timing_traces(puf, n_traces)
+        results['timing_analysis'] = self.timing_attacker.analyze_timing_correlation(timing_traces)
+
+        # EM analysis attack
+        em_traces = self.em_attacker.collect_em_traces(puf, n_traces // 2)
+        results['em_analysis'] = self.em_attacker.analyze_em_leakage(em_traces)
+
+        # Combined attack assessment
+        attack_success_count = sum([
+            results['power_analysis']['dpa']['leakage_detected'],
+            results['power_analysis']['cpa']['attack_success'],
+            results['timing_analysis']['attack_success'],
+            results['em_analysis']['attack_success']
+        ])
+
+        combined_success_rate = attack_success_count / 4.0
+
+        # Overall threat assessment
+        if combined_success_rate >= 0.75:
+            threat_level = 'CRITICAL'
+        elif combined_success_rate >= 0.5:
+            threat_level = 'HIGH'
+        elif combined_success_rate >= 0.25:
+            threat_level = 'MEDIUM'
+        else:
+            threat_level = 'LOW'
+
+        results['combined_attack'] = {
+            'successful_attacks': attack_success_count,
+            'total_attacks': 4,
+            'success_rate': combined_success_rate,
+            'threat_level': threat_level,
+            'recommendation': self._generate_recommendation(threat_level)
+        }
+
+        self.attack_results = results
+        return results
+
+    def _generate_recommendation(self, threat_level: str) -> str:
+        """Generate defense recommendations based on threat level."""
+        recommendations = {
+            'CRITICAL': 'IMMEDIATE ACTION REQUIRED: Implement hardware countermeasures, power filtering, temporal randomization, and physical shielding.',
+            'HIGH': 'Deploy advanced countermeasures: power line filtering, noise injection, and EM shielding.',
+            'MEDIUM': 'Consider basic countermeasures: power supply decoupling, clock randomization, and physical access controls.',
+            'LOW': 'Current defenses adequate for most threat scenarios. Monitor for advanced persistent threats.'
+        }
+        return recommendations.get(threat_level, 'Unknown threat level')
+
+
+if __name__ == "__main__":
+    print("=== PPET Side-Channel Attack Framework ===")
+    print("Testing side-channel vulnerabilities for military PUF evaluation\n")
+
+    from attacks import MLAttacker  # noqa:F401
+
+    from puf_models import ArbiterPUF
+    puf = ArbiterPUF(n_stages=64, seed=42)
+
+    print("--- Power Analysis Attack ---")
+    power_attacker = PowerAnalysisAttacker(attack_type='dpa')
+    power_traces = power_attacker.collect_traces(puf, n_traces=200)
+    dpa_result = power_attacker.perform_dpa_attack(power_traces)
+    print(f"DPA leakage detected: {dpa_result['leakage_detected']}")
+    print(f"DPA p-value: {dpa_result['p_value']:.6f}")
+    print(f"DPA SNR: {dpa_result['snr_db']:.2f} dB")
+
+    cpa_result = power_attacker.perform_cpa_attack(power_traces)
+    print(f"CPA attack success: {cpa_result['attack_success']}")
+    print(f"CPA max correlation: {cpa_result['max_correlation']:.4f}")
+
+    print("\n--- Timing Analysis Attack ---")
+    timing_attacker = TimingAnalysisAttacker()
+    timing_traces = timing_attacker.collect_timing_traces(puf, n_measurements=200)
+    timing_result = timing_attacker.analyze_timing_correlation(timing_traces)
+    print(f"Timing attack success: {timing_result['attack_success']}")
+    print(f"Timing difference: {timing_result['timing_difference']:.2e} s")
+    print(f"Timing correlation: {timing_result['correlation']:.4f}")
+
+    print("\n--- EM Analysis Attack ---")
+    em_attacker = EMAnalysisAttacker()
+    em_traces = em_attacker.collect_em_traces(puf, n_traces=100)
+    em_result = em_attacker.analyze_em_leakage(em_traces)
+    print(f"EM attack success: {em_result['attack_success']}")
+    print(f"EM max correlation: {em_result['max_correlation']:.4f}")
+    print(f"EM cluster purity: {em_result['cluster_purity']:.4f}")
+
+    print("\n--- Comprehensive Multi-Channel Attack ---")
+    multi_attacker = MultiChannelAttacker()
+    comprehensive_results = multi_attacker.comprehensive_attack(puf, n_traces=150)
+
+    combined = comprehensive_results['combined_attack']
+    print(f"Successful attacks: {combined['successful_attacks']}/{combined['total_attacks']}")
+    print(f"Overall success rate: {combined['success_rate']:.2f}")
+    print(f"Threat level: {combined['threat_level']}")
+    print(f"Recommendation: {combined['recommendation']}")
+
+    print("\n=== Side-channel attack framework testing complete ===")
+    print("PPET ready for comprehensive side-channel security evaluation.")
