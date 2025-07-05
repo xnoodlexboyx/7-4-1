@@ -1,8 +1,6 @@
-import sys
 import numpy as np
 import pytest
-sys.path.insert(0, "ppet-thesis")
-from puf_models import ArbiterPUF, SRAMPUF, RingOscillatorPUF, ButterflyPUF
+from ppet.puf_models import ArbiterPUF, SRAMPUF, RingOscillatorPUF, ButterflyPUF
 
 @pytest.fixture
 def challenges():

@@ -1,10 +1,8 @@
-import sys
 import numpy as np
 import pytest
-sys.path.insert(0, "ppet-thesis")
-from puf_models import ArbiterPUF, SRAMPUF, RingOscillatorPUF, ButterflyPUF
-from stressors import apply_temperature, apply_voltage, apply_aging, apply_radiation, apply_emi, apply_multi_stress
-from analysis import bit_error_rate
+from ppet.puf_models import ArbiterPUF, SRAMPUF, RingOscillatorPUF, ButterflyPUF
+from ppet.stressors import apply_temperature, apply_voltage, apply_aging, apply_radiation, apply_emi, apply_multi_stress
+from ppet.analysis import bit_error_rate
 
 @pytest.fixture
 def challenges():

@@ -1,8 +1,6 @@
-import sys
 import numpy as np
 import pytest
-sys.path.insert(0, "ppet-thesis")
-from analysis import simulate_ecc
+from ppet.analysis import simulate_ecc
 
 @pytest.fixture
 def golden_noisy_pair():

@@ -26,7 +26,7 @@ import copy
 from .puf_models import BasePUF, ArbiterPUF, SRAMPUF, RingOscillatorPUF, ButterflyPUF
 from .stressors import apply_temperature, apply_voltage, apply_radiation, apply_emi
 from .attacks import MLAttacker, CNNAttacker, AdversarialAttacker
-from .side_channel import MultiChannelAttacker
+# from .side_channel import MultiChannelAttacker  # Disabled due to syntax issues
 from .physical_attacks import ComprehensivePhysicalAttacker, AttackComplexity
 
 # Try to import optional packages

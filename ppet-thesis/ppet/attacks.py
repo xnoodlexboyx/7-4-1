@@ -1,13 +1,23 @@
 import numpy as np
-from sklearn.linear_model import LogisticRegression
-from sklearn.neural_network import MLPClassifier
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import cross_val_score
-from sklearn.metrics import classification_report
 from typing import Optional, Any, List, Tuple, Dict
-from .puf_models import ArbiterPUF, SRAMPUF, RingOscillatorPUF, ButterflyPUF, BasePUF
 import warnings
 warnings.filterwarnings('ignore')
+
+# Try to import optional sklearn packages
+try:
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.neural_network import MLPClassifier
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.model_selection import cross_val_score
+    from sklearn.metrics import classification_report
+    HAS_SKLEARN = True
+except ImportError:
+    HAS_SKLEARN = False
+    LogisticRegression = None
+    MLPClassifier = None
+    RandomForestClassifier = None
+
+from .puf_models import ArbiterPUF, SRAMPUF, RingOscillatorPUF, ButterflyPUF, BasePUF
 
 class MLAttacker:
     """
@@ -66,6 +76,8 @@ class MLAttacker:
     - Supply chain hardware integrity verification
     """
     def __init__(self, n_stages: int, C: float = 1.0, penalty: str = 'l2', **kwargs: Any) -> None:
+        if not HAS_SKLEARN:
+            raise ImportError("sklearn is required for MLAttacker. Install with: pip install scikit-learn")
         self.n_stages = n_stages
         self.model = LogisticRegression(
             solver='lbfgs',

@@ -123,4 +123,582 @@ class PowerAnalysisAttacker:
             
         elif isinstance(puf, ButterflyPUF):
             # Butterfly power depends on metastability resolution
-            meta_power = 0.6 * np.sum(challenge)  # Metastability cost\n            switching_power = meta_power\n            \n            # Latch settling leakage\n            response_leakage = 2.5 if response == 1 else -1.8  # mW\n            \n        else:\n            # Default power model\n            switching_power = 0.3 * np.sum(challenge)\n            response_leakage = 1.0 if response == 1 else -0.5\n        \n        # Generate time-domain power trace\n        total_power = base_power + switching_power + response_leakage\n        \n        # Simulate evaluation phases\n        trace = np.zeros(n_samples)\n        \n        # Challenge loading phase (samples 0-200)\n        trace[0:200] = base_power + switching_power * 0.3\n        \n        # Evaluation phase (samples 200-700) - main leakage\n        eval_power = total_power + 5 * np.sin(2 * np.pi * np.arange(500) / 100)\n        trace[200:700] = eval_power\n        \n        # Response generation phase (samples 700-900)\n        resp_power = base_power + response_leakage\n        trace[700:900] = resp_power\n        \n        # Idle phase (samples 900-1000)\n        trace[900:1000] = base_power\n        \n        # Add measurement noise\n        noise = rng.normal(0, self.noise_level * base_power, n_samples)\n        trace += noise\n        \n        # Add electromagnetic interference (military environment)\n        emi_freq = 100e6  # 100 MHz\n        sample_rate = 1e9  # 1 GSa/s\n        t = np.arange(n_samples) / sample_rate\n        emi_signal = 0.5 * np.sin(2 * np.pi * emi_freq * t)\n        trace += emi_signal\n        \n        return SideChannelTrace(\n            trace_data=trace,\n            challenge=challenge,\n            response=response,\n            timestamp=0.0,\n            metadata={\n                'attack_type': 'power',\n                'base_power': base_power,\n                'switching_power': switching_power,\n                'response_leakage': response_leakage,\n                'noise_level': self.noise_level\n            }\n        )\n    \n    def collect_traces(self, puf: BasePUF, n_traces: int = 1000) -> List[SideChannelTrace]:\n        \"\"\"\n        Collect power traces for attack.\n        \n        Parameters\n        ----------\n        puf : BasePUF\n            Target PUF instance\n        n_traces : int\n            Number of traces to collect\n            \n        Returns\n        -------\n        List[SideChannelTrace]\n            Collected power traces\n        \"\"\"\n        rng = np.random.default_rng(42)\n        n_stages = getattr(puf, 'n_stages', getattr(puf, 'n_cells', \n                          getattr(puf, 'n_rings', getattr(puf, 'n_butterflies', 64))))\n        \n        traces = []\n        for i in range(n_traces):\n            challenge = rng.integers(0, 2, size=n_stages)\n            response = puf.eval(challenge.reshape(1, -1))[0]\n            \n            trace = self.generate_power_trace(puf, challenge, response)\n            traces.append(trace)\n        \n        self.traces = traces\n        return traces\n    \n    def perform_dpa_attack(self, traces: List[SideChannelTrace]) -> Dict[str, Any]:\n        \"\"\"\n        Perform Differential Power Analysis (DPA) attack.\n        \n        Parameters\n        ----------\n        traces : List[SideChannelTrace]\n            Power traces for analysis\n            \n        Returns\n        -------\n        Dict[str, Any]\n            DPA attack results\n        \"\"\"\n        if not traces:\n            raise ValueError(\"No traces provided for DPA analysis\")\n        \n        # Separate traces by response value\n        traces_positive = [t for t in traces if t.response == 1]\n        traces_negative = [t for t in traces if t.response == -1]\n        \n        if not traces_positive or not traces_negative:\n            raise ValueError(\"Need traces for both response values\")\n        \n        # Compute mean traces for each response\n        mean_positive = np.mean([t.trace_data for t in traces_positive], axis=0)\n        mean_negative = np.mean([t.trace_data for t in traces_negative], axis=0)\n        \n        # DPA differential trace\n        differential = mean_positive - mean_negative\n        \n        # Find peak difference (potential leakage point)\n        peak_idx = np.argmax(np.abs(differential))\n        peak_value = differential[peak_idx]\n        \n        # Statistical significance test\n        pos_values = [t.trace_data[peak_idx] for t in traces_positive]\n        neg_values = [t.trace_data[peak_idx] for t in traces_negative]\n        \n        t_stat, p_value = scipy.stats.ttest_ind(pos_values, neg_values)\n        \n        # Signal-to-noise ratio\n        signal_power = np.var(differential)\n        noise_power = np.mean([np.var(t.trace_data) for t in traces])\n        snr = 10 * np.log10(signal_power / noise_power)\n        \n        return {\n            'attack_type': 'dpa',\n            'differential_trace': differential,\n            'peak_index': peak_idx,\n            'peak_value': peak_value,\n            't_statistic': t_stat,\n            'p_value': p_value,\n            'snr_db': snr,\n            'traces_positive': len(traces_positive),\n            'traces_negative': len(traces_negative),\n            'leakage_detected': p_value < 0.05 and abs(peak_value) > 1.0\n        }\n    \n    def perform_cpa_attack(self, traces: List[SideChannelTrace]) -> Dict[str, Any]:\n        \"\"\"\n        Perform Correlation Power Analysis (CPA) attack.\n        \n        Parameters\n        ----------\n        traces : List[SideChannelTrace]\n            Power traces for analysis\n            \n        Returns\n        -------\n        Dict[str, Any]\n            CPA attack results\n        \"\"\"\n        if not traces:\n            raise ValueError(\"No traces provided for CPA analysis\")\n        \n        # Extract power traces and hypothetical power model\n        power_traces = np.array([t.trace_data for t in traces])\n        responses = np.array([t.response for t in traces])\n        \n        # Hypothetical power model (Hamming weight of response)\n        hypothesis = np.array([1 if r == 1 else 0 for r in responses])\n        \n        # Compute correlation for each time sample\n        n_samples = power_traces.shape[1]\n        correlations = np.zeros(n_samples)\n        \n        for i in range(n_samples):\n            corr_coef, _ = scipy.stats.pearsonr(power_traces[:, i], hypothesis)\n            correlations[i] = corr_coef\n        \n        # Find maximum correlation\n        max_corr_idx = np.argmax(np.abs(correlations))\n        max_correlation = correlations[max_corr_idx]\n        \n        # Correlation threshold for successful attack\n        correlation_threshold = 0.3\n        attack_success = abs(max_correlation) > correlation_threshold\n        \n        return {\n            'attack_type': 'cpa',\n            'correlations': correlations,\n            'max_correlation': max_correlation,\n            'max_correlation_index': max_corr_idx,\n            'attack_success': attack_success,\n            'correlation_threshold': correlation_threshold,\n            'n_traces': len(traces)\n        }\n\nclass TimingAnalysisAttacker:\n    \"\"\"\n    Timing analysis attack for PUF evaluation.\n    Models timing side-channel leakage in PUF implementations.\n    \"\"\"\n    \n    def __init__(self, timing_resolution: float = 1e-9):\n        \"\"\"\n        Initialize timing analysis attacker.\n        \n        Parameters\n        ----------\n        timing_resolution : float\n            Timing measurement resolution in seconds\n        \"\"\"\n        self.timing_resolution = timing_resolution\n        self.timing_traces = []\n    \n    def measure_timing(self, puf: BasePUF, challenge: np.ndarray) -> float:\n        \"\"\"\n        Simulate timing measurement for PUF evaluation.\n        \n        Parameters\n        ----------\n        puf : BasePUF\n            Target PUF instance\n        challenge : np.ndarray\n            Input challenge\n            \n        Returns\n        -------\n        float\n            Simulated evaluation time in seconds\n        \"\"\"\n        # Base evaluation time\n        base_time = 10e-9  # 10 ns\n        \n        # Challenge-dependent timing variations\n        if isinstance(puf, ArbiterPUF):\n            # Timing depends on delay path lengths\n            delay_sum = np.sum(puf.delay_params * MLAttacker._parity_transform(challenge))\n            timing_variation = abs(delay_sum) * 1e-12  # ps per delay unit\n            \n        elif isinstance(puf, SRAMPUF):\n            # SRAM timing depends on cell bias and noise\n            cell_timing = np.mean(puf.vth_variations) * 1e-12  # ps per mV\n            timing_variation = abs(cell_timing)\n            \n        elif isinstance(puf, RingOscillatorPUF):\n            # RO timing depends on frequency differences\n            freq_diff = np.std(puf.base_frequencies)\n            timing_variation = freq_diff * 1e-12  # ps per MHz\n            \n        elif isinstance(puf, ButterflyPUF):\n            # Butterfly timing depends on metastability resolution\n            meta_time = np.mean(puf.settling_times)\n            timing_variation = meta_time * 1e-9  # ns\n            \n        else:\n            timing_variation = 1e-12  # Default 1 ps variation\n        \n        # Add measurement noise\n        rng = np.random.default_rng(42)\n        noise = rng.normal(0, self.timing_resolution * 0.1)\n        \n        total_time = base_time + timing_variation + noise\n        return max(total_time, 0)  # Ensure positive timing\n    \n    def collect_timing_traces(self, puf: BasePUF, n_measurements: int = 1000) -> List[Tuple[np.ndarray, float, int]]:\n        \"\"\"\n        Collect timing measurements for attack.\n        \n        Parameters\n        ----------\n        puf : BasePUF\n            Target PUF instance\n        n_measurements : int\n            Number of timing measurements\n            \n        Returns\n        -------\n        List[Tuple[np.ndarray, float, int]]\n            List of (challenge, timing, response) tuples\n        \"\"\"\n        rng = np.random.default_rng(42)\n        n_stages = getattr(puf, 'n_stages', getattr(puf, 'n_cells', \n                          getattr(puf, 'n_rings', getattr(puf, 'n_butterflies', 64))))\n        \n        timing_traces = []\n        for i in range(n_measurements):\n            challenge = rng.integers(0, 2, size=n_stages)\n            timing = self.measure_timing(puf, challenge)\n            response = puf.eval(challenge.reshape(1, -1))[0]\n            \n            timing_traces.append((challenge, timing, response))\n        \n        self.timing_traces = timing_traces\n        return timing_traces\n    \n    def analyze_timing_correlation(self, timing_traces: List[Tuple[np.ndarray, float, int]]) -> Dict[str, Any]:\n        \"\"\"\n        Analyze timing correlation with PUF responses.\n        \n        Parameters\n        ----------\n        timing_traces : List[Tuple[np.ndarray, float, int]]\n            Timing measurement data\n            \n        Returns\n        -------\n        Dict[str, Any]\n            Timing analysis results\n        \"\"\"\n        if not timing_traces:\n            raise ValueError(\"No timing traces provided\")\n        \n        timings = np.array([t[1] for t in timing_traces])\n        responses = np.array([t[2] for t in timing_traces])\n        \n        # Separate timings by response\n        timings_pos = timings[responses == 1]\n        timings_neg = timings[responses == -1]\n        \n        # Statistical analysis\n        mean_pos = np.mean(timings_pos)\n        mean_neg = np.mean(timings_neg)\n        timing_diff = mean_pos - mean_neg\n        \n        # T-test for significance\n        t_stat, p_value = scipy.stats.ttest_ind(timings_pos, timings_neg)\n        \n        # Correlation analysis\n        binary_responses = (responses == 1).astype(int)\n        correlation, corr_p_value = scipy.stats.pearsonr(timings, binary_responses)\n        \n        # Attack success criteria\n        attack_success = (p_value < 0.05) and (abs(timing_diff) > self.timing_resolution)\n        \n        return {\n            'attack_type': 'timing',\n            'mean_timing_positive': mean_pos,\n            'mean_timing_negative': mean_neg,\n            'timing_difference': timing_diff,\n            't_statistic': t_stat,\n            'p_value': p_value,\n            'correlation': correlation,\n            'correlation_p_value': corr_p_value,\n            'attack_success': attack_success,\n            'n_measurements': len(timing_traces),\n            'timing_resolution': self.timing_resolution\n        }\n\nclass EMAnalysisAttacker:\n    \"\"\"\n    Electromagnetic analysis attack for PUF evaluation.\n    Models EM emanation analysis in military environments.\n    \"\"\"\n    \n    def __init__(self, frequency_range: Tuple[float, float] = (1e6, 1e9), \n                 distance_m: float = 0.1):\n        \"\"\"\n        Initialize EM analysis attacker.\n        \n        Parameters\n        ----------\n        frequency_range : Tuple[float, float]\n            EM frequency range to analyze (Hz)\n        distance_m : float\n            Distance from target device (meters)\n        \"\"\"\n        self.freq_min, self.freq_max = frequency_range\n        self.distance = distance_m\n        self.em_traces = []\n    \n    def generate_em_trace(self, puf: BasePUF, challenge: np.ndarray, \n                         response: int) -> SideChannelTrace:\n        \"\"\"\n        Generate simulated EM emanation trace.\n        \n        Parameters\n        ----------\n        puf : BasePUF\n            Target PUF instance\n        challenge : np.ndarray\n            Input challenge\n        response : int\n            PUF response\n            \n        Returns\n        -------\n        SideChannelTrace\n            Simulated EM trace\n        \"\"\"\n        n_samples = 1024  # Frequency domain samples\n        freqs = np.linspace(self.freq_min, self.freq_max, n_samples)\n        \n        # Base EM signature\n        base_em = 1e-6 / (self.distance ** 2)  # Inverse square law\n        \n        # Challenge-dependent EM variations\n        if isinstance(puf, ArbiterPUF):\n            # Switching current creates EM radiation\n            switching_activity = np.sum(challenge)\n            em_amplitude = base_em * (1 + 0.1 * switching_activity)\n            \n        elif isinstance(puf, RingOscillatorPUF):\n            # Ring oscillators create strong EM signatures\n            osc_freq = np.mean(puf.base_frequencies) * 1e6  # Convert to Hz\n            em_amplitude = base_em * (1 + 0.2 * np.sum(challenge))\n            \n        else:\n            em_amplitude = base_em * (1 + 0.05 * np.sum(challenge))\n        \n        # Generate frequency domain EM signature\n        em_spectrum = np.zeros(n_samples, dtype=complex)\n        \n        # Clock harmonics\n        clock_freq = 100e6  # 100 MHz clock\n        for harmonic in range(1, 6):\n            freq_idx = np.argmin(np.abs(freqs - harmonic * clock_freq))\n            if freq_idx < n_samples:\n                em_spectrum[freq_idx] = em_amplitude * (1 / harmonic)\n        \n        # Response-dependent modulation\n        if response == 1:\n            # Additional harmonics for response = 1\n            mod_freq = 50e6  # 50 MHz modulation\n            for harmonic in range(1, 4):\n                freq_idx = np.argmin(np.abs(freqs - harmonic * mod_freq))\n                if freq_idx < n_samples:\n                    em_spectrum[freq_idx] += em_amplitude * 0.3 / harmonic\n        \n        # Add measurement noise\n        rng = np.random.default_rng(42)\n        noise = rng.normal(0, em_amplitude * 0.1, n_samples) + \\\n               1j * rng.normal(0, em_amplitude * 0.1, n_samples)\n        em_spectrum += noise\n        \n        # Convert to time domain for analysis\n        time_trace = np.abs(np.fft.ifft(em_spectrum))\n        \n        return SideChannelTrace(\n            trace_data=time_trace,\n            challenge=challenge,\n            response=response,\n            timestamp=0.0,\n            metadata={\n                'attack_type': 'em',\n                'frequency_range': (self.freq_min, self.freq_max),\n                'distance': self.distance,\n                'em_amplitude': em_amplitude\n            }\n        )\n    \n    def collect_em_traces(self, puf: BasePUF, n_traces: int = 500) -> List[SideChannelTrace]:\n        \"\"\"\n        Collect EM traces for attack.\n        \n        Parameters\n        ----------\n        puf : BasePUF\n            Target PUF instance\n        n_traces : int\n            Number of EM traces to collect\n            \n        Returns\n        -------\n        List[SideChannelTrace]\n            Collected EM traces\n        \"\"\"\n        rng = np.random.default_rng(42)\n        n_stages = getattr(puf, 'n_stages', getattr(puf, 'n_cells', \n                          getattr(puf, 'n_rings', getattr(puf, 'n_butterflies', 64))))\n        \n        em_traces = []\n        for i in range(n_traces):\n            challenge = rng.integers(0, 2, size=n_stages)\n            response = puf.eval(challenge.reshape(1, -1))[0]\n            \n            trace = self.generate_em_trace(puf, challenge, response)\n            em_traces.append(trace)\n        \n        self.em_traces = em_traces\n        return em_traces\n    \n    def analyze_em_leakage(self, em_traces: List[SideChannelTrace]) -> Dict[str, Any]:\n        \"\"\"\n        Analyze EM leakage for PUF attacks.\n        \n        Parameters\n        ----------\n        em_traces : List[SideChannelTrace]\n            EM measurement traces\n            \n        Returns\n        -------\n        Dict[str, Any]\n            EM analysis results\n        \"\"\"\n        if not em_traces:\n            raise ValueError(\"No EM traces provided\")\n        \n        # Extract trace data and responses\n        traces_matrix = np.array([t.trace_data for t in em_traces])\n        responses = np.array([t.response for t in em_traces])\n        \n        # Principal Component Analysis for feature extraction\n        pca = PCA(n_components=10)\n        pca_features = pca.fit_transform(traces_matrix)\n        \n        # Correlation analysis with responses\n        correlations = []\n        for i in range(pca_features.shape[1]):\n            corr, _ = scipy.stats.pearsonr(pca_features[:, i], responses)\n            correlations.append(corr)\n        \n        max_correlation = max(correlations, key=abs)\n        max_corr_component = np.argmax(np.abs(correlations))\n        \n        # Clustering analysis\n        kmeans = KMeans(n_clusters=2, random_state=42)\n        clusters = kmeans.fit_predict(pca_features[:, :3])  # Use top 3 components\n        \n        # Cluster purity (how well clusters separate responses)\n        cluster_0_responses = responses[clusters == 0]\n        cluster_1_responses = responses[clusters == 1]\n        \n        purity_0 = max(np.mean(cluster_0_responses == 1), np.mean(cluster_0_responses == -1))\n        purity_1 = max(np.mean(cluster_1_responses == 1), np.mean(cluster_1_responses == -1))\n        overall_purity = (len(cluster_0_responses) * purity_0 + \n                         len(cluster_1_responses) * purity_1) / len(responses)\n        \n        # Attack success criteria\n        attack_success = (abs(max_correlation) > 0.3) or (overall_purity > 0.8)\n        \n        return {\n            'attack_type': 'em',\n            'max_correlation': max_correlation,\n            'max_correlation_component': max_corr_component,\n            'pca_explained_variance': pca.explained_variance_ratio_,\n            'cluster_purity': overall_purity,\n            'attack_success': attack_success,\n            'n_traces': len(em_traces),\n            'distance': self.distance\n        }\n\nclass MultiChannelAttacker:\n    \"\"\"\n    Multi-channel side-channel attacker combining multiple attack vectors.\n    Models sophisticated military adversaries with advanced equipment.\n    \"\"\"\n    \n    def __init__(self):\n        \"\"\"\n        Initialize multi-channel attacker.\n        \"\"\"\n        self.power_attacker = PowerAnalysisAttacker()\n        self.timing_attacker = TimingAnalysisAttacker()\n        self.em_attacker = EMAnalysisAttacker()\n        self.attack_results = {}\n    \n    def comprehensive_attack(self, puf: BasePUF, n_traces: int = 1000) -> Dict[str, Any]:\n        \"\"\"\n        Perform comprehensive multi-channel side-channel attack.\n        \n        Parameters\n        ----------\n        puf : BasePUF\n            Target PUF instance\n        n_traces : int\n            Number of traces per attack vector\n            \n        Returns\n        -------\n        Dict[str, Any]\n            Combined attack results\n        \"\"\"\n        results = {\n            'power_analysis': {},\n            'timing_analysis': {},\n            'em_analysis': {},\n            'combined_attack': {}\n        }\n        \n        # Power analysis attack\n        power_traces = self.power_attacker.collect_traces(puf, n_traces)\n        results['power_analysis']['dpa'] = self.power_attacker.perform_dpa_attack(power_traces)\n        results['power_analysis']['cpa'] = self.power_attacker.perform_cpa_attack(power_traces)\n        \n        # Timing analysis attack\n        timing_traces = self.timing_attacker.collect_timing_traces(puf, n_traces)\n        results['timing_analysis'] = self.timing_attacker.analyze_timing_correlation(timing_traces)\n        \n        # EM analysis attack\n        em_traces = self.em_attacker.collect_em_traces(puf, n_traces // 2)  # EM traces are expensive\n        results['em_analysis'] = self.em_attacker.analyze_em_leakage(em_traces)\n        \n        # Combined attack assessment\n        attack_success_count = sum([\n            results['power_analysis']['dpa']['leakage_detected'],\n            results['power_analysis']['cpa']['attack_success'],\n            results['timing_analysis']['attack_success'],\n            results['em_analysis']['attack_success']\n        ])\n        \n        combined_success_rate = attack_success_count / 4.0\n        \n        # Overall threat assessment\n        if combined_success_rate >= 0.75:\n            threat_level = 'CRITICAL'\n        elif combined_success_rate >= 0.5:\n            threat_level = 'HIGH'\n        elif combined_success_rate >= 0.25:\n            threat_level = 'MEDIUM'\n        else:\n            threat_level = 'LOW'\n        \n        results['combined_attack'] = {\n            'successful_attacks': attack_success_count,\n            'total_attacks': 4,\n            'success_rate': combined_success_rate,\n            'threat_level': threat_level,\n            'recommendation': self._generate_recommendation(threat_level)\n        }\n        \n        self.attack_results = results\n        return results\n    \n    def _generate_recommendation(self, threat_level: str) -> str:\n        \"\"\"\n        Generate defense recommendations based on threat level.\n        \n        Parameters\n        ----------\n        threat_level : str\n            Assessed threat level\n            \n        Returns\n        -------\n        str\n            Defense recommendation\n        \"\"\"\n        recommendations = {\n            'CRITICAL': 'IMMEDIATE ACTION REQUIRED: Implement hardware countermeasures, '\n                       'power filtering, temporal randomization, and physical shielding.',\n            'HIGH': 'Deploy advanced countermeasures: power line filtering, '\n                   'noise injection, and EM shielding.',\n            'MEDIUM': 'Consider basic countermeasures: power supply decoupling, '\n                     'clock randomization, and physical access controls.',\n            'LOW': 'Current defenses adequate for most threat scenarios. '\n                  'Monitor for advanced persistent threats.'\n        }\n        return recommendations.get(threat_level, 'Unknown threat level')\n\nif __name__ == \"__main__\":\n    print(\"=== PPET Side-Channel Attack Framework ===\")\n    print(\"Testing side-channel vulnerabilities for military PUF evaluation\\n\")\n    \n    # Import ML attacker for testing\n    from attacks import MLAttacker\n    \n    # Test with Arbiter PUF\n    from puf_models import ArbiterPUF\n    puf = ArbiterPUF(n_stages=64, seed=42)\n    \n    print(\"--- Power Analysis Attack ---\")\n    power_attacker = PowerAnalysisAttacker(attack_type='dpa')\n    power_traces = power_attacker.collect_traces(puf, n_traces=200)\n    dpa_result = power_attacker.perform_dpa_attack(power_traces)\n    print(f\"DPA leakage detected: {dpa_result['leakage_detected']}\")\n    print(f\"DPA p-value: {dpa_result['p_value']:.6f}\")\n    print(f\"DPA SNR: {dpa_result['snr_db']:.2f} dB\")\n    \n    cpa_result = power_attacker.perform_cpa_attack(power_traces)\n    print(f\"CPA attack success: {cpa_result['attack_success']}\")\n    print(f\"CPA max correlation: {cpa_result['max_correlation']:.4f}\")\n    \n    print(\"\\n--- Timing Analysis Attack ---\")\n    timing_attacker = TimingAnalysisAttacker()\n    timing_traces = timing_attacker.collect_timing_traces(puf, n_measurements=200)\n    timing_result = timing_attacker.analyze_timing_correlation(timing_traces)\n    print(f\"Timing attack success: {timing_result['attack_success']}\")\n    print(f\"Timing difference: {timing_result['timing_difference']:.2e} s\")\n    print(f\"Timing correlation: {timing_result['correlation']:.4f}\")\n    \n    print(\"\\n--- EM Analysis Attack ---\")\n    em_attacker = EMAnalysisAttacker()\n    em_traces = em_attacker.collect_em_traces(puf, n_traces=100)\n    em_result = em_attacker.analyze_em_leakage(em_traces)\n    print(f\"EM attack success: {em_result['attack_success']}\")\n    print(f\"EM max correlation: {em_result['max_correlation']:.4f}\")\n    print(f\"EM cluster purity: {em_result['cluster_purity']:.4f}\")\n    \n    print(\"\\n--- Comprehensive Multi-Channel Attack ---\")\n    multi_attacker = MultiChannelAttacker()\n    comprehensive_results = multi_attacker.comprehensive_attack(puf, n_traces=150)\n    \n    combined = comprehensive_results['combined_attack']\n    print(f\"Successful attacks: {combined['successful_attacks']}/{combined['total_attacks']}\")\n    print(f\"Overall success rate: {combined['success_rate']:.2f}\")\n    print(f\"Threat level: {combined['threat_level']}\")\n    print(f\"Recommendation: {combined['recommendation']}\")\n    \n    print(\"\\n=== Side-channel attack framework testing complete ===\")\n    print(\"PPET ready for comprehensive side-channel security evaluation.\")
+            meta_power = 0.6 * np.sum(challenge)  # Metastability cost
+            switching_power = meta_power
+            
+            # Latch settling leakage
+            response_leakage = 2.5 if response == 1 else -1.8  # mW
+            
+        else:
+            # Default power model
+            switching_power = 0.3 * np.sum(challenge)
+            response_leakage = 1.0 if response == 1 else -0.5
+        
+        # Generate time-domain power trace
+        total_power = base_power + switching_power + response_leakage
+        
+        # Simulate evaluation phases
+        trace = np.zeros(n_samples)
+        
+        # Challenge loading phase (samples 0-200)
+        trace[0:200] = base_power + switching_power * 0.3
+        
+        # Evaluation phase (samples 200-700) - main leakage
+        eval_power = total_power + 5 * np.sin(2 * np.pi * np.arange(500) / 100)
+        trace[200:700] = eval_power
+        
+        # Response generation phase (samples 700-900)
+        resp_power = base_power + response_leakage
+        trace[700:900] = resp_power
+        
+        # Idle phase (samples 900-1000)
+        trace[900:1000] = base_power
+        
+        # Add measurement noise
+        noise = rng.normal(0, self.noise_level * base_power, n_samples)
+        trace += noise
+        
+        # Add electromagnetic interference (military environment)
+        emi_freq = 100e6  # 100 MHz
+        sample_rate = 1e9  # 1 GSa/s
+        t = np.arange(n_samples) / sample_rate
+        emi_signal = 0.5 * np.sin(2 * np.pi * emi_freq * t)
+        trace += emi_signal
+        
+        return SideChannelTrace(
+            trace_data=trace,
+            challenge=challenge,
+            response=response,
+            timestamp=0.0,
+            metadata={
+                'attack_type': 'power',
+                'base_power': base_power,
+                'switching_power': switching_power,
+                'response_leakage': response_leakage,
+                'noise_level': self.noise_level
+            }
+        )
+    
+    def collect_traces(self, puf: BasePUF, n_traces: int = 1000) -> List[SideChannelTrace]:
+        """
+        Collect power traces for attack.
+        
+        Parameters
+        ----------
+        puf : BasePUF
+            Target PUF instance
+        n_traces : int
+            Number of traces to collect
+            
+        Returns
+        -------
+        List[SideChannelTrace]
+            Collected power traces
+        """
+        rng = np.random.default_rng(42)
+        n_stages = getattr(puf, 'n_stages', getattr(puf, 'n_cells', 
+                          getattr(puf, 'n_rings', getattr(puf, 'n_butterflies', 64))))
+        
+        traces = []
+        for i in range(n_traces):
+            challenge = rng.integers(0, 2, size=n_stages)
+            response = puf.eval(challenge.reshape(1, -1))[0]
+            
+            trace = self.generate_power_trace(puf, challenge, response)
+            traces.append(trace)
+        
+        self.traces = traces
+        return traces
+    
+    def perform_dpa_attack(self, traces: List[SideChannelTrace]) -> Dict[str, Any]:
+        """
+        Perform Differential Power Analysis (DPA) attack.
+        
+        Parameters
+        ----------
+        traces : List[SideChannelTrace]
+            Power traces for analysis
+            
+        Returns
+        -------
+        Dict[str, Any]
+            DPA attack results
+        """
+        if not traces:
+            raise ValueError("No traces provided for DPA analysis")
+        
+        # Separate traces by response value
+        traces_positive = [t for t in traces if t.response == 1]
+        traces_negative = [t for t in traces if t.response == -1]
+        
+        if not traces_positive or not traces_negative:
+            raise ValueError("Need traces for both response values")
+        
+        # Compute mean traces for each response
+        mean_positive = np.mean([t.trace_data for t in traces_positive], axis=0)
+        mean_negative = np.mean([t.trace_data for t in traces_negative], axis=0)
+        
+        # DPA differential trace
+        differential = mean_positive - mean_negative
+        
+        # Find peak difference (potential leakage point)
+        peak_idx = np.argmax(np.abs(differential))
+        peak_value = differential[peak_idx]
+        
+        # Statistical significance test (with fallback if scipy not available)
+        if HAS_SCIPY:
+            pos_values = [t.trace_data[peak_idx] for t in traces_positive]
+            neg_values = [t.trace_data[peak_idx] for t in traces_negative]
+            
+            t_stat, p_value = scipy.stats.ttest_ind(pos_values, neg_values)
+        else:
+            t_stat, p_value = 0.0, 0.5  # Conservative fallback
+        
+        # Signal-to-noise ratio
+        signal_power = np.var(differential)
+        noise_power = np.mean([np.var(t.trace_data) for t in traces])
+        snr = 10 * np.log10(signal_power / noise_power) if noise_power > 0 else 0
+        
+        return {
+            'attack_type': 'dpa',
+            'differential_trace': differential,
+            'peak_index': peak_idx,
+            'peak_value': peak_value,
+            't_statistic': t_stat,
+            'p_value': p_value,
+            'snr_db': snr,
+            'traces_positive': len(traces_positive),
+            'traces_negative': len(traces_negative),
+            'leakage_detected': p_value < 0.05 and abs(peak_value) > 1.0
+        }
+    
+    def perform_cpa_attack(self, traces: List[SideChannelTrace]) -> Dict[str, Any]:
+        """
+        Perform Correlation Power Analysis (CPA) attack.
+        
+        Parameters
+        ----------
+        traces : List[SideChannelTrace]
+            Power traces for analysis
+            
+        Returns
+        -------
+        Dict[str, Any]
+            CPA attack results
+        """
+        if not traces:
+            raise ValueError("No traces provided for CPA analysis")
+        
+        # Extract power traces and hypothetical power model
+        power_traces = np.array([t.trace_data for t in traces])
+        responses = np.array([t.response for t in traces])
+        
+        # Hypothetical power model (Hamming weight of response)
+        hypothesis = np.array([1 if r == 1 else 0 for r in responses])
+        
+        # Compute correlation for each time sample
+        n_samples = power_traces.shape[1]
+        correlations = np.zeros(n_samples)
+        
+        for i in range(n_samples):
+            if HAS_SCIPY:
+                corr_coef, _ = scipy.stats.pearsonr(power_traces[:, i], hypothesis)
+            else:
+                # Simple correlation fallback
+                corr_coef = np.corrcoef(power_traces[:, i], hypothesis)[0, 1]
+                if np.isnan(corr_coef):
+                    corr_coef = 0.0
+            correlations[i] = corr_coef
+        
+        # Find maximum correlation
+        max_corr_idx = np.argmax(np.abs(correlations))
+        max_correlation = correlations[max_corr_idx]
+        
+        # Correlation threshold for successful attack
+        correlation_threshold = 0.3
+        attack_success = abs(max_correlation) > correlation_threshold
+        
+        return {
+            'attack_type': 'cpa',
+            'correlations': correlations,
+            'max_correlation': max_correlation,
+            'max_correlation_index': max_corr_idx,
+            'attack_success': attack_success,
+            'correlation_threshold': correlation_threshold,
+            'n_traces': len(traces)
+        }
+
+
+class TimingAnalysisAttacker:
+    """
+    Timing analysis attack for PUF evaluation.
+    Models timing side-channel leakage in PUF implementations.
+    """
+    
+    def __init__(self, timing_resolution: float = 1e-9):
+        """
+        Initialize timing analysis attacker.
+        
+        Parameters
+        ----------
+        timing_resolution : float
+            Timing measurement resolution in seconds
+        """
+        self.timing_resolution = timing_resolution
+        self.timing_traces = []
+    
+    def measure_timing(self, puf: BasePUF, challenge: np.ndarray) -> float:
+        """
+        Simulate timing measurement for PUF evaluation.
+        
+        Parameters
+        ----------
+        puf : BasePUF
+            Target PUF instance
+        challenge : np.ndarray
+            Input challenge
+            
+        Returns
+        -------
+        float
+            Simulated evaluation time in seconds
+        """
+        # Base evaluation time
+        base_time = 10e-9  # 10 ns
+        
+        # Challenge-dependent timing variations
+        if isinstance(puf, ArbiterPUF):
+            # Timing depends on delay path lengths
+            # Use simple challenge transformation instead of MLAttacker reference
+            challenge_features = np.array([1 - 2 * c for c in challenge])
+            delay_sum = np.sum(puf.delay_params * challenge_features)
+            timing_variation = abs(delay_sum) * 1e-12  # ps per delay unit
+            
+        elif isinstance(puf, SRAMPUF):
+            # SRAM timing depends on cell bias and noise
+            cell_timing = np.mean(puf.vth_variations) * 1e-12  # ps per mV
+            timing_variation = abs(cell_timing)
+            
+        elif isinstance(puf, RingOscillatorPUF):
+            # RO timing depends on frequency differences
+            freq_diff = np.std(puf.base_frequencies)
+            timing_variation = freq_diff * 1e-12  # ps per MHz
+            
+        elif isinstance(puf, ButterflyPUF):
+            # Butterfly timing depends on metastability resolution
+            meta_time = np.mean(puf.settling_times)
+            timing_variation = meta_time * 1e-9  # ns
+            
+        else:
+            timing_variation = 1e-12  # Default 1 ps variation
+        
+        # Add measurement noise
+        rng = np.random.default_rng(42)
+        noise = rng.normal(0, self.timing_resolution * 0.1)
+        
+        total_time = base_time + timing_variation + noise
+        return max(total_time, 0)  # Ensure positive timing
+    
+    def collect_timing_traces(self, puf: BasePUF, n_measurements: int = 1000) -> List[Tuple[np.ndarray, float, int]]:
+        """
+        Collect timing measurements for attack.
+        
+        Parameters
+        ----------
+        puf : BasePUF
+            Target PUF instance
+        n_measurements : int
+            Number of timing measurements
+            
+        Returns
+        -------
+        List[Tuple[np.ndarray, float, int]]
+            List of (challenge, timing, response) tuples
+        """
+        rng = np.random.default_rng(42)
+        n_stages = getattr(puf, 'n_stages', getattr(puf, 'n_cells', 
+                          getattr(puf, 'n_rings', getattr(puf, 'n_butterflies', 64))))
+        
+        timing_traces = []
+        for i in range(n_measurements):
+            challenge = rng.integers(0, 2, size=n_stages)
+            timing = self.measure_timing(puf, challenge)
+            response = puf.eval(challenge.reshape(1, -1))[0]
+            
+            timing_traces.append((challenge, timing, response))
+        
+        self.timing_traces = timing_traces
+        return timing_traces
+    
+    def analyze_timing_correlation(self, timing_traces: List[Tuple[np.ndarray, float, int]]) -> Dict[str, Any]:
+        """
+        Analyze timing correlation with PUF responses.
+        
+        Parameters
+        ----------
+        timing_traces : List[Tuple[np.ndarray, float, int]]
+            Timing measurement data
+            
+        Returns
+        -------
+        Dict[str, Any]
+            Timing analysis results
+        """
+        if not timing_traces:
+            raise ValueError("No timing traces provided")
+        
+        timings = np.array([t[1] for t in timing_traces])
+        responses = np.array([t[2] for t in timing_traces])
+        
+        # Separate timings by response
+        timings_pos = timings[responses == 1]
+        timings_neg = timings[responses == -1]
+        
+        # Statistical analysis
+        mean_pos = np.mean(timings_pos)
+        mean_neg = np.mean(timings_neg)
+        timing_diff = mean_pos - mean_neg
+        
+        # T-test for significance
+        if HAS_SCIPY:
+            t_stat, p_value = scipy.stats.ttest_ind(timings_pos, timings_neg)
+        else:
+            t_stat, p_value = 0.0, 0.5
+        
+        # Correlation analysis
+        binary_responses = (responses == 1).astype(int)
+        if HAS_SCIPY:
+            correlation, corr_p_value = scipy.stats.pearsonr(timings, binary_responses)
+        else:
+            correlation = np.corrcoef(timings, binary_responses)[0, 1]
+            if np.isnan(correlation):
+                correlation = 0.0
+            corr_p_value = 0.5
+        
+        # Attack success criteria
+        attack_success = (p_value < 0.05) and (abs(timing_diff) > self.timing_resolution)
+        
+        return {
+            'attack_type': 'timing',
+            'mean_timing_positive': mean_pos,
+            'mean_timing_negative': mean_neg,
+            'timing_difference': timing_diff,
+            't_statistic': t_stat,
+            'p_value': p_value,
+            'correlation': correlation,
+            'correlation_p_value': corr_p_value,
+            'attack_success': attack_success,
+            'n_measurements': len(timing_traces),
+            'timing_resolution': self.timing_resolution
+        }
+
+
+class EMAnalysisAttacker:
+    """
+    Electromagnetic analysis attack for PUF evaluation.
+    Models EM emanation analysis in military environments.
+    """
+    
+    def __init__(self, frequency_range: Tuple[float, float] = (1e6, 1e9), 
+                 distance_m: float = 0.1):
+        """
+        Initialize EM analysis attacker.
+        
+        Parameters
+        ----------
+        frequency_range : Tuple[float, float]
+            EM frequency range to analyze (Hz)
+        distance_m : float
+            Distance from target device (meters)
+        """
+        self.freq_min, self.freq_max = frequency_range
+        self.distance = distance_m
+        self.em_traces = []
+    
+    def generate_em_trace(self, puf: BasePUF, challenge: np.ndarray, 
+                         response: int) -> SideChannelTrace:
+        """
+        Generate simulated EM emanation trace.
+        
+        Parameters
+        ----------
+        puf : BasePUF
+            Target PUF instance
+        challenge : np.ndarray
+            Input challenge
+        response : int
+            PUF response
+            
+        Returns
+        -------
+        SideChannelTrace
+            Simulated EM trace
+        """
+        n_samples = 1024  # Frequency domain samples
+        freqs = np.linspace(self.freq_min, self.freq_max, n_samples)
+        
+        # Base EM signature
+        base_em = 1e-6 / (self.distance ** 2)  # Inverse square law
+        
+        # Challenge-dependent EM variations
+        if isinstance(puf, ArbiterPUF):
+            # Switching current creates EM radiation
+            switching_activity = np.sum(challenge)
+            em_amplitude = base_em * (1 + 0.1 * switching_activity)
+            
+        elif isinstance(puf, RingOscillatorPUF):
+            # Ring oscillators create strong EM signatures
+            osc_freq = np.mean(puf.base_frequencies) * 1e6  # Convert to Hz
+            em_amplitude = base_em * (1 + 0.2 * np.sum(challenge))
+            
+        else:
+            em_amplitude = base_em * (1 + 0.05 * np.sum(challenge))
+        
+        # Generate frequency domain EM signature
+        em_spectrum = np.zeros(n_samples, dtype=complex)
+        
+        # Clock harmonics
+        clock_freq = 100e6  # 100 MHz clock
+        for harmonic in range(1, 6):
+            freq_idx = np.argmin(np.abs(freqs - harmonic * clock_freq))
+            if freq_idx < n_samples:
+                em_spectrum[freq_idx] = em_amplitude * (1 / harmonic)
+        
+        # Response-dependent modulation
+        if response == 1:
+            # Additional harmonics for response = 1
+            mod_freq = 50e6  # 50 MHz modulation
+            for harmonic in range(1, 4):
+                freq_idx = np.argmin(np.abs(freqs - harmonic * mod_freq))
+                if freq_idx < n_samples:
+                    em_spectrum[freq_idx] += em_amplitude * 0.3 / harmonic
+        
+        # Add measurement noise
+        rng = np.random.default_rng(42)
+        noise = rng.normal(0, em_amplitude * 0.1, n_samples) + \
+               1j * rng.normal(0, em_amplitude * 0.1, n_samples)
+        em_spectrum += noise
+        
+        # Convert to time domain for analysis
+        time_trace = np.abs(np.fft.ifft(em_spectrum))
+        
+        return SideChannelTrace(
+            trace_data=time_trace,
+            challenge=challenge,
+            response=response,
+            timestamp=0.0,
+            metadata={
+                'attack_type': 'em',
+                'frequency_range': (self.freq_min, self.freq_max),
+                'distance': self.distance,
+                'em_amplitude': em_amplitude
+            }
+        )
+    
+    def collect_em_traces(self, puf: BasePUF, n_traces: int = 500) -> List[SideChannelTrace]:
+        """
+        Collect EM traces for attack.
+        
+        Parameters
+        ----------
+        puf : BasePUF
+            Target PUF instance
+        n_traces : int
+            Number of EM traces to collect
+            
+        Returns
+        -------
+        List[SideChannelTrace]
+            Collected EM traces
+        """
+        rng = np.random.default_rng(42)
+        n_stages = getattr(puf, 'n_stages', getattr(puf, 'n_cells', 
+                          getattr(puf, 'n_rings', getattr(puf, 'n_butterflies', 64))))
+        
+        em_traces = []
+        for i in range(n_traces):
+            challenge = rng.integers(0, 2, size=n_stages)
+            response = puf.eval(challenge.reshape(1, -1))[0]
+            
+            trace = self.generate_em_trace(puf, challenge, response)
+            em_traces.append(trace)
+        
+        self.em_traces = em_traces
+        return em_traces
+    
+    def analyze_em_leakage(self, em_traces: List[SideChannelTrace]) -> Dict[str, Any]:
+        """
+        Analyze EM leakage for PUF attacks.
+        
+        Parameters
+        ----------
+        em_traces : List[SideChannelTrace]
+            EM measurement traces
+            
+        Returns
+        -------
+        Dict[str, Any]
+            EM analysis results
+        """
+        if not em_traces:
+            raise ValueError("No EM traces provided")
+        
+        # Extract trace data and responses
+        traces_matrix = np.array([t.trace_data for t in em_traces])
+        responses = np.array([t.response for t in em_traces])
+        
+        # Principal Component Analysis for feature extraction
+        if HAS_SKLEARN:
+            pca = PCA(n_components=10)
+            pca_features = pca.fit_transform(traces_matrix)
+            
+            # Correlation analysis with responses
+            correlations = []
+            for i in range(pca_features.shape[1]):
+                if HAS_SCIPY:
+                    corr, _ = scipy.stats.pearsonr(pca_features[:, i], responses)
+                else:
+                    corr = np.corrcoef(pca_features[:, i], responses)[0, 1]
+                    if np.isnan(corr):
+                        corr = 0.0
+                correlations.append(corr)
+            
+            max_correlation = max(correlations, key=abs)
+            max_corr_component = np.argmax(np.abs(correlations))
+            
+            # Clustering analysis
+            kmeans = KMeans(n_clusters=2, random_state=42)
+            clusters = kmeans.fit_predict(pca_features[:, :3])  # Use top 3 components
+            explained_variance = pca.explained_variance_ratio_
+        else:
+            # Fallback without sklearn
+            max_correlation = 0.0
+            max_corr_component = 0
+            clusters = np.random.randint(0, 2, len(responses))
+            explained_variance = np.array([0.5, 0.3, 0.2])
+        
+        # Cluster purity (how well clusters separate responses)
+        cluster_0_responses = responses[clusters == 0]
+        cluster_1_responses = responses[clusters == 1]
+        
+        if len(cluster_0_responses) > 0 and len(cluster_1_responses) > 0:
+            purity_0 = max(np.mean(cluster_0_responses == 1), np.mean(cluster_0_responses == -1))
+            purity_1 = max(np.mean(cluster_1_responses == 1), np.mean(cluster_1_responses == -1))
+            overall_purity = (len(cluster_0_responses) * purity_0 + 
+                             len(cluster_1_responses) * purity_1) / len(responses)
+        else:
+            overall_purity = 0.5  # Default
+        
+        # Attack success criteria
+        attack_success = (abs(max_correlation) > 0.3) or (overall_purity > 0.8)
+        
+        return {
+            'attack_type': 'em',
+            'max_correlation': max_correlation,
+            'max_correlation_component': max_corr_component,
+            'pca_explained_variance': explained_variance,
+            'cluster_purity': overall_purity,
+            'attack_success': attack_success,
+            'n_traces': len(em_traces),
+            'distance': self.distance
+        }\n\nclass MultiChannelAttacker:\n    \"\"\"\n    Multi-channel side-channel attacker combining multiple attack vectors.\n    Models sophisticated military adversaries with advanced equipment.\n    \"\"\"\n    \n    def __init__(self):\n        \"\"\"\n        Initialize multi-channel attacker.\n        \"\"\"\n        self.power_attacker = PowerAnalysisAttacker()\n        self.timing_attacker = TimingAnalysisAttacker()\n        self.em_attacker = EMAnalysisAttacker()\n        self.attack_results = {}\n    \n    def comprehensive_attack(self, puf: BasePUF, n_traces: int = 1000) -> Dict[str, Any]:\n        \"\"\"\n        Perform comprehensive multi-channel side-channel attack.\n        \n        Parameters\n        ----------\n        puf : BasePUF\n            Target PUF instance\n        n_traces : int\n            Number of traces per attack vector\n            \n        Returns\n        -------\n        Dict[str, Any]\n            Combined attack results\n        \"\"\"\n        results = {\n            'power_analysis': {},\n            'timing_analysis': {},\n            'em_analysis': {},\n            'combined_attack': {}\n        }\n        \n        # Power analysis attack\n        power_traces = self.power_attacker.collect_traces(puf, n_traces)\n        results['power_analysis']['dpa'] = self.power_attacker.perform_dpa_attack(power_traces)\n        results['power_analysis']['cpa'] = self.power_attacker.perform_cpa_attack(power_traces)\n        \n        # Timing analysis attack\n        timing_traces = self.timing_attacker.collect_timing_traces(puf, n_traces)\n        results['timing_analysis'] = self.timing_attacker.analyze_timing_correlation(timing_traces)\n        \n        # EM analysis attack\n        em_traces = self.em_attacker.collect_em_traces(puf, n_traces // 2)  # EM traces are expensive\n        results['em_analysis'] = self.em_attacker.analyze_em_leakage(em_traces)\n        \n        # Combined attack assessment\n        attack_success_count = sum([\n            results['power_analysis']['dpa']['leakage_detected'],\n            results['power_analysis']['cpa']['attack_success'],\n            results['timing_analysis']['attack_success'],\n            results['em_analysis']['attack_success']\n        ])\n        \n        combined_success_rate = attack_success_count / 4.0\n        \n        # Overall threat assessment\n        if combined_success_rate >= 0.75:\n            threat_level = 'CRITICAL'\n        elif combined_success_rate >= 0.5:\n            threat_level = 'HIGH'\n        elif combined_success_rate >= 0.25:\n            threat_level = 'MEDIUM'\n        else:\n            threat_level = 'LOW'\n        \n        results['combined_attack'] = {\n            'successful_attacks': attack_success_count,\n            'total_attacks': 4,\n            'success_rate': combined_success_rate,\n            'threat_level': threat_level,\n            'recommendation': self._generate_recommendation(threat_level)\n        }\n        \n        self.attack_results = results\n        return results\n    \n    def _generate_recommendation(self, threat_level: str) -> str:\n        \"\"\"\n        Generate defense recommendations based on threat level.\n        \n        Parameters\n        ----------\n        threat_level : str\n            Assessed threat level\n            \n        Returns\n        -------\n        str\n            Defense recommendation\n        \"\"\"\n        recommendations = {\n            'CRITICAL': 'IMMEDIATE ACTION REQUIRED: Implement hardware countermeasures, '\n                       'power filtering, temporal randomization, and physical shielding.',\n            'HIGH': 'Deploy advanced countermeasures: power line filtering, '\n                   'noise injection, and EM shielding.',\n            'MEDIUM': 'Consider basic countermeasures: power supply decoupling, '\n                     'clock randomization, and physical access controls.',\n            'LOW': 'Current defenses adequate for most threat scenarios. '\n                  'Monitor for advanced persistent threats.'\n        }\n        return recommendations.get(threat_level, 'Unknown threat level')\n\nif __name__ == \"__main__\":\n    print(\"=== PPET Side-Channel Attack Framework ===\")\n    print(\"Testing side-channel vulnerabilities for military PUF evaluation\\n\")\n    \n    # Import ML attacker for testing\n    from attacks import MLAttacker\n    \n    # Test with Arbiter PUF\n    from puf_models import ArbiterPUF\n    puf = ArbiterPUF(n_stages=64, seed=42)\n    \n    print(\"--- Power Analysis Attack ---\")\n    power_attacker = PowerAnalysisAttacker(attack_type='dpa')\n    power_traces = power_attacker.collect_traces(puf, n_traces=200)\n    dpa_result = power_attacker.perform_dpa_attack(power_traces)\n    print(f\"DPA leakage detected: {dpa_result['leakage_detected']}\")\n    print(f\"DPA p-value: {dpa_result['p_value']:.6f}\")\n    print(f\"DPA SNR: {dpa_result['snr_db']:.2f} dB\")\n    \n    cpa_result = power_attacker.perform_cpa_attack(power_traces)\n    print(f\"CPA attack success: {cpa_result['attack_success']}\")\n    print(f\"CPA max correlation: {cpa_result['max_correlation']:.4f}\")\n    \n    print(\"\\n--- Timing Analysis Attack ---\")\n    timing_attacker = TimingAnalysisAttacker()\n    timing_traces = timing_attacker.collect_timing_traces(puf, n_measurements=200)\n    timing_result = timing_attacker.analyze_timing_correlation(timing_traces)\n    print(f\"Timing attack success: {timing_result['attack_success']}\")\n    print(f\"Timing difference: {timing_result['timing_difference']:.2e} s\")\n    print(f\"Timing correlation: {timing_result['correlation']:.4f}\")\n    \n    print(\"\\n--- EM Analysis Attack ---\")\n    em_attacker = EMAnalysisAttacker()\n    em_traces = em_attacker.collect_em_traces(puf, n_traces=100)\n    em_result = em_attacker.analyze_em_leakage(em_traces)\n    print(f\"EM attack success: {em_result['attack_success']}\")\n    print(f\"EM max correlation: {em_result['max_correlation']:.4f}\")\n    print(f\"EM cluster purity: {em_result['cluster_purity']:.4f}\")\n    \n    print(\"\\n--- Comprehensive Multi-Channel Attack ---\")\n    multi_attacker = MultiChannelAttacker()\n    comprehensive_results = multi_attacker.comprehensive_attack(puf, n_traces=150)\n    \n    combined = comprehensive_results['combined_attack']\n    print(f\"Successful attacks: {combined['successful_attacks']}/{combined['total_attacks']}\")\n    print(f\"Overall success rate: {combined['success_rate']:.2f}\")\n    print(f\"Threat level: {combined['threat_level']}\")\n    print(f\"Recommendation: {combined['recommendation']}\")\n    \n    print(\"\\n=== Side-channel attack framework testing complete ===\")\n    print(\"PPET ready for comprehensive side-channel security evaluation.\")

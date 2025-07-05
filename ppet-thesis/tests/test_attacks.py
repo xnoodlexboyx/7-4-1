@@ -1,12 +1,10 @@
-import sys
 import numpy as np
 import pytest
 from unittest.mock import patch, MagicMock
-sys.path.insert(0, "ppet-thesis")
-from puf_models import ArbiterPUF, SRAMPUF, RingOscillatorPUF, ButterflyPUF
-from attacks import MLAttacker, CNNAttacker, AdversarialAttacker
+from ppet.puf_models import ArbiterPUF, SRAMPUF, RingOscillatorPUF, ButterflyPUF
+from ppet.attacks import MLAttacker, CNNAttacker, AdversarialAttacker
 try:
-    from defense_scenarios import (
+    from ppet.defense_scenarios import (
         DefenseScenarioRunner, SatelliteCommScenario, DroneAuthScenario,
         IoTFieldScenario, SupplyChainScenario, ThreatActor, OperationalEnvironment
     )

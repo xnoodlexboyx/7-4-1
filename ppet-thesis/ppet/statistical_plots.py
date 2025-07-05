@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 import os
 
 # Try to import optional packages
@@ -581,6 +581,318 @@ def main():
         return 1
     
     return 0
+
+
+def advanced_significance_testing(
+    data_groups: Dict[str, np.ndarray],
+    alpha: float = 0.05
+) -> Dict[str, Any]:
+    """
+    Perform advanced statistical significance testing on multiple data groups.
+    
+    Parameters
+    ----------
+    data_groups : Dict[str, np.ndarray]
+        Data groups for comparison: {group_name: values}
+    alpha : float, optional
+        Significance level for hypothesis testing
+        
+    Returns
+    -------
+    Dict[str, Any]
+        Statistical test results with p-values and effect sizes
+    """
+    if not HAS_SCIPY:
+        print("Warning: scipy not available, returning basic statistics")
+        return {group: {'mean': np.mean(values), 'std': np.std(values)} 
+                for group, values in data_groups.items()}
+    
+    results = {}
+    
+    # ANOVA test for multiple groups
+    if len(data_groups) > 2:
+        group_values = list(data_groups.values())
+        f_stat, p_anova = stats.f_oneway(*group_values)
+        results['anova'] = {
+            'f_statistic': f_stat,
+            'p_value': p_anova,
+            'significant': p_anova < alpha
+        }
+    
+    # Pairwise t-tests
+    group_names = list(data_groups.keys())
+    pairwise_results = {}
+    
+    for i in range(len(group_names)):
+        for j in range(i + 1, len(group_names)):
+            name1, name2 = group_names[i], group_names[j]
+            data1, data2 = data_groups[name1], data_groups[name2]
+            
+            # Welch's t-test (unequal variances)
+            t_stat, p_value = stats.ttest_ind(data1, data2, equal_var=False)
+            
+            # Effect size (Cohen's d)
+            pooled_std = np.sqrt((np.var(data1) + np.var(data2)) / 2)
+            cohens_d = (np.mean(data1) - np.mean(data2)) / pooled_std if pooled_std > 0 else 0
+            
+            pairwise_results[f"{name1}_vs_{name2}"] = {
+                't_statistic': t_stat,
+                'p_value': p_value,
+                'significant': p_value < alpha,
+                'cohens_d': cohens_d,
+                'effect_size': 'small' if abs(cohens_d) < 0.5 else 'medium' if abs(cohens_d) < 0.8 else 'large'
+            }
+    
+    results['pairwise_tests'] = pairwise_results
+    
+    # Normality tests
+    normality_results = {}
+    for group_name, values in data_groups.items():
+        if len(values) >= 3:
+            shapiro_stat, shapiro_p = stats.shapiro(values)
+            normality_results[group_name] = {
+                'shapiro_statistic': shapiro_stat,
+                'shapiro_p_value': shapiro_p,
+                'is_normal': shapiro_p > alpha
+            }
+    
+    results['normality_tests'] = normality_results
+    
+    return results
+
+
+def generate_comprehensive_correlation_analysis(
+    feature_matrix: np.ndarray,
+    feature_names: List[str],
+    output_dir: str = 'figures/statistical/',
+    dpi: int = 300
+) -> str:
+    """
+    Generate comprehensive correlation analysis with hierarchical clustering.
+    
+    Parameters
+    ----------
+    feature_matrix : np.ndarray
+        Feature matrix (n_samples x n_features)
+    feature_names : List[str]
+        Names of features
+    output_dir : str, optional
+        Output directory for figures
+    dpi : int, optional
+        DPI for saved figures
+        
+    Returns
+    -------
+    str
+        Path to saved correlation analysis figure
+    """
+    if not HAS_SEABORN or not HAS_SCIPY:
+        print("Warning: seaborn or scipy not available, generating basic correlation plot")
+        
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Calculate correlation matrix
+    correlation_matrix = np.corrcoef(feature_matrix.T)
+    
+    fig, axes = plt.subplots(2, 2, figsize=(20, 16))
+    fig.suptitle('Comprehensive Correlation Analysis', fontsize=18, fontweight='bold')
+    
+    # 1. Basic correlation heatmap
+    ax1 = axes[0, 0]
+    if HAS_SEABORN:
+        sns.heatmap(correlation_matrix, annot=True, cmap='RdBu_r', center=0,
+                   xticklabels=feature_names, yticklabels=feature_names,
+                   ax=ax1, square=True)
+    else:
+        im = ax1.imshow(correlation_matrix, cmap='RdBu_r', vmin=-1, vmax=1)
+        ax1.set_xticks(range(len(feature_names)))
+        ax1.set_yticks(range(len(feature_names)))
+        ax1.set_xticklabels(feature_names, rotation=45, ha='right')
+        ax1.set_yticklabels(feature_names)
+        plt.colorbar(im, ax=ax1)
+    ax1.set_title('Correlation Heatmap')
+    
+    # 2. Hierarchical clustering dendrogram
+    ax2 = axes[0, 1]
+    if HAS_SCIPY:
+        distance_matrix = 1 - np.abs(correlation_matrix)
+        linkage_matrix = linkage(distance_matrix, method='ward')
+        dendrogram(linkage_matrix, labels=feature_names, ax=ax2,
+                  orientation='top', leaf_rotation=45)
+        ax2.set_title('Feature Clustering Dendrogram')
+    else:
+        ax2.text(0.5, 0.5, 'scipy not available\nfor clustering analysis',
+                ha='center', va='center', transform=ax2.transAxes)
+        ax2.set_title('Feature Clustering (Unavailable)')
+    
+    # 3. Distribution of correlation coefficients
+    ax3 = axes[1, 0]
+    # Extract upper triangle (excluding diagonal)
+    upper_triangle = correlation_matrix[np.triu_indices_from(correlation_matrix, k=1)]
+    ax3.hist(upper_triangle, bins=20, alpha=0.7, color='skyblue', edgecolor='black')
+    ax3.axvline(np.mean(upper_triangle), color='red', linestyle='--', 
+               label=f'Mean: {np.mean(upper_triangle):.3f}')
+    ax3.set_xlabel('Correlation Coefficient')
+    ax3.set_ylabel('Frequency')
+    ax3.set_title('Distribution of Correlation Coefficients')
+    ax3.legend()
+    ax3.grid(True, alpha=0.3)
+    
+    # 4. Top correlated feature pairs
+    ax4 = axes[1, 1]
+    # Find top correlated pairs
+    n_features = len(feature_names)
+    correlation_pairs = []
+    for i in range(n_features):
+        for j in range(i + 1, n_features):
+            correlation_pairs.append((
+                f"{feature_names[i]} - {feature_names[j]}",
+                abs(correlation_matrix[i, j])
+            ))
+    
+    # Sort by correlation strength and take top 10
+    correlation_pairs.sort(key=lambda x: x[1], reverse=True)
+    top_pairs = correlation_pairs[:min(10, len(correlation_pairs))]
+    
+    if top_pairs:
+        pair_names = [pair[0] for pair in top_pairs]
+        pair_values = [pair[1] for pair in top_pairs]
+        
+        y_pos = np.arange(len(pair_names))
+        ax4.barh(y_pos, pair_values, color='lightcoral', alpha=0.7)
+        ax4.set_yticks(y_pos)
+        ax4.set_yticklabels(pair_names, fontsize=8)
+        ax4.set_xlabel('Absolute Correlation')
+        ax4.set_title('Top Correlated Feature Pairs')
+        ax4.grid(True, axis='x', alpha=0.3)
+    
+    plt.tight_layout()
+    
+    output_path = os.path.join(output_dir, 'comprehensive_correlation_analysis.png')
+    plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
+    plt.close()
+    
+    return output_path
+
+
+def analyze_puf_entropy_distribution(
+    puf_responses: Dict[str, np.ndarray],
+    output_dir: str = 'figures/statistical/',
+    dpi: int = 300
+) -> str:
+    """
+    Analyze PUF response entropy distributions for security assessment.
+    
+    Parameters
+    ----------
+    puf_responses : Dict[str, np.ndarray]
+        PUF responses for different conditions: {condition: responses}
+    output_dir : str, optional
+        Output directory for figures
+    dpi : int, optional
+        DPI for saved figures
+        
+    Returns
+    -------
+    str
+        Path to saved entropy analysis figure
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    fig.suptitle('PUF Response Entropy Analysis for Security Assessment', 
+                 fontsize=16, fontweight='bold')
+    
+    # Calculate entropy for each condition
+    entropy_results = {}
+    for condition, responses in puf_responses.items():
+        # Convert to binary if not already
+        binary_responses = (responses + 1) // 2 if np.min(responses) < 0 else responses
+        
+        # Calculate bit-wise entropy
+        bit_entropy = []
+        for bit_pos in range(binary_responses.shape[1] if len(binary_responses.shape) > 1 else 1):
+            if len(binary_responses.shape) > 1:
+                bit_values = binary_responses[:, bit_pos]
+            else:
+                bit_values = binary_responses
+                
+            p1 = np.mean(bit_values)
+            p0 = 1 - p1
+            entropy = -p0 * np.log2(p0 + 1e-10) - p1 * np.log2(p1 + 1e-10)
+            bit_entropy.append(entropy)
+        
+        entropy_results[condition] = np.array(bit_entropy)
+    
+    # 1. Entropy distribution per condition
+    ax1 = axes[0, 0]
+    if HAS_SEABORN:
+        entropy_data = []
+        condition_data = []
+        for condition, entropies in entropy_results.items():
+            entropy_data.extend(entropies)
+            condition_data.extend([condition] * len(entropies))
+        
+        sns.boxplot(x=condition_data, y=entropy_data, ax=ax1)
+    else:
+        box_data = [entropies for entropies in entropy_results.values()]
+        ax1.boxplot(box_data, labels=list(entropy_results.keys()))
+    
+    ax1.set_title('Bit-wise Entropy Distribution')
+    ax1.set_ylabel('Entropy (bits)')
+    ax1.grid(True, alpha=0.3)
+    
+    # 2. Mean entropy comparison
+    ax2 = axes[0, 1]
+    conditions = list(entropy_results.keys())
+    mean_entropies = [np.mean(entropy_results[cond]) for cond in conditions]
+    std_entropies = [np.std(entropy_results[cond]) for cond in conditions]
+    
+    x_pos = np.arange(len(conditions))
+    bars = ax2.bar(x_pos, mean_entropies, yerr=std_entropies, 
+                   capsize=5, alpha=0.7, color='lightblue')
+    ax2.set_xticks(x_pos)
+    ax2.set_xticklabels(conditions, rotation=45, ha='right')
+    ax2.set_ylabel('Mean Entropy (bits)')
+    ax2.set_title('Mean Bit-wise Entropy by Condition')
+    ax2.grid(True, alpha=0.3)
+    
+    # Add value labels on bars
+    for bar, value in zip(bars, mean_entropies):
+        ax2.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+                f'{value:.3f}', ha='center', va='bottom')
+    
+    # 3. Entropy vs bit position
+    ax3 = axes[1, 0]
+    for condition, entropies in entropy_results.items():
+        ax3.plot(range(len(entropies)), entropies, marker='o', label=condition, alpha=0.7)
+    ax3.set_xlabel('Bit Position')
+    ax3.set_ylabel('Entropy (bits)')
+    ax3.set_title('Entropy vs Bit Position')
+    ax3.legend()
+    ax3.grid(True, alpha=0.3)
+    
+    # 4. Entropy histogram
+    ax4 = axes[1, 1]
+    all_entropies = np.concatenate(list(entropy_results.values()))
+    ax4.hist(all_entropies, bins=20, alpha=0.7, color='lightgreen', edgecolor='black')
+    ax4.axvline(np.mean(all_entropies), color='red', linestyle='--', 
+               label=f'Mean: {np.mean(all_entropies):.3f}')
+    ax4.axvline(1.0, color='blue', linestyle='--', alpha=0.7,
+               label='Ideal Entropy (1.0)')
+    ax4.set_xlabel('Entropy (bits)')
+    ax4.set_ylabel('Frequency')
+    ax4.set_title('Overall Entropy Distribution')
+    ax4.legend()
+    ax4.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    
+    output_path = os.path.join(output_dir, 'puf_entropy_analysis.png')
+    plt.savefig(output_path, dpi=dpi, bbox_inches='tight')
+    plt.close()
+    
+    return output_path
 
 
 if __name__ == "__main__":
