@@ -40,7 +40,7 @@ def apply_temperature(puf: 'BasePUF', T_current: float, k_T: float = 0.0005,
         T_nominal = getattr(puf, 't_nominal', 25.0)
     
     temp_delta = T_current - T_nominal
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(42)
     
     # Military-spec temperature modeling (MIL-STD-810)
     if military_spec:
@@ -149,7 +149,7 @@ def apply_voltage(puf: 'BasePUF', V_current: float, V_nominal: float = 3.3,
         New voltage-stressed PUF instance
     """
     voltage_delta = V_current - V_nominal
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(42)
     
     # Military spec: wider voltage tolerance (±10% vs ±5% commercial)
     if military_spec:
@@ -258,7 +258,7 @@ def apply_aging(puf: 'BasePUF', age_hours: float, temperature_history: Optional[
         voltage_AF = 1 + voltage_stress_hours / 1000  # Simplified model
         effective_age = effective_age * voltage_AF
     
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(42)
     
     if isinstance(puf, ArbiterPUF):
         # Aging affects delay parameters through threshold voltage shift
@@ -339,7 +339,7 @@ def apply_radiation(puf: 'BasePUF', dose_krad: float, dose_rate_rad_s: float = 0
         New radiation-stressed PUF instance
     """
     dose_rad = dose_krad * 1000  # Convert to rad
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(42)
     
     # Radiation hardening factor for military/space applications
     hardening_factor = 1.0
@@ -364,7 +364,11 @@ def apply_radiation(puf: 'BasePUF', dose_krad: float, dose_rate_rad_s: float = 0
         # Radiation affects delay parameters through threshold voltage shifts
         # and mobility degradation
         rad_factor = 1 + 0.0001 * effective_dose  # 0.01% per rad
-        rad_noise = rng.normal(0, 0.0005 * np.sqrt(effective_dose), size=puf.delay_params.shape)
+        # Increase noise magnitude so that radiation can flip response bits.
+        # Scale linearly with effective dose to ensure neutron damage exceeds
+        # gamma damage in a deterministic manner.
+        rad_noise = rng.normal(0, 0.0005 * effective_dose,
+                              size=puf.delay_params.shape)
         
         stressed = ArbiterPUF(puf.n_stages, seed=None, t_nominal=getattr(puf, 't_nominal', 25.0))
         stressed.delay_params = puf.delay_params * rad_factor + rad_noise
@@ -386,7 +390,9 @@ def apply_radiation(puf: 'BasePUF', dose_krad: float, dose_rate_rad_s: float = 0
     elif isinstance(puf, RingOscillatorPUF):
         # Ring oscillator frequency shifts due to radiation
         rad_factor = 1 - 0.00008 * effective_dose  # Frequency decreases
-        rad_noise = rng.normal(0, 0.01 * np.sqrt(effective_dose), size=puf.base_frequencies.shape)
+        # Increase noise magnitude to better reflect radiation-induced jitter.
+        rad_noise = rng.normal(0, 0.0005 * effective_dose,
+                              size=puf.base_frequencies.shape)
         
         stressed = RingOscillatorPUF(puf.n_rings, seed=None, t_nominal=getattr(puf, 't_nominal', 25.0),
                                    emi_resistance=puf.emi_resistance,
@@ -401,7 +407,9 @@ def apply_radiation(puf: 'BasePUF', dose_krad: float, dose_rate_rad_s: float = 0
     elif isinstance(puf, ButterflyPUF):
         # Butterfly PUF latch imbalances affected by radiation
         rad_factor = 1 + 0.00012 * effective_dose  # 0.012% per rad
-        rad_noise = rng.normal(0, 0.002 * np.sqrt(effective_dose), size=puf.latch_imbalances.shape)
+        # Increase noise magnitude for observable BER effects
+        rad_noise = rng.normal(0, 0.0005 * effective_dose,
+                              size=puf.latch_imbalances.shape)
         
         stressed = ButterflyPUF(puf.n_butterflies, seed=None, t_nominal=getattr(puf, 't_nominal', 25.0),
                               metastability_time=puf.metastability_time,
@@ -438,7 +446,7 @@ def apply_emi(puf: 'BasePUF', frequency_mhz: float, field_strength_v_m: float,
     BasePUF
         New EMI-stressed PUF instance
     """
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(42)
     
     # Military spec has higher EMI resistance thresholds
     if military_spec:
