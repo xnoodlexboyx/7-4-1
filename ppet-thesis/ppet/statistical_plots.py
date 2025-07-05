@@ -304,9 +304,13 @@ def _create_correlation_heatmap(
     # Generate correlation heatmap
     mask = np.triu(np.ones_like(correlation_matrix, dtype=bool))  # Mask upper triangle
     
-    im = sns.heatmap(correlation_matrix, mask=mask, annot=True, cmap='RdBu_r',
-                    center=0, square=True, linewidths=0.5, cbar_kws={"shrink": 0.8},
-                    fmt='.3f', ax=ax)
+    if HAS_SEABORN:
+        im = sns.heatmap(correlation_matrix, mask=mask, annot=True, cmap='RdBu_r',
+                        center=0, square=True, linewidths=0.5, cbar_kws={"shrink": 0.8},
+                        fmt='.3f', ax=ax)
+    else:
+        im = ax.imshow(correlation_matrix, cmap='RdBu_r', vmin=-1, vmax=1)
+        plt.colorbar(im, ax=ax, label='Correlation Coefficient')
     
     ax.set_title('Correlation Matrix: Environmental Factors vs Security Metrics',
                 fontsize=16, fontweight='bold', pad=20)

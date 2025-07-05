@@ -26,10 +26,10 @@ from typing import Dict, Any, List, Tuple, Optional
 from dataclasses import dataclass
 from enum import Enum
 import time
-from ppet.puf_models import BasePUF, ArbiterPUF, SRAMPUF, RingOscillatorPUF, ButterflyPUF
-from ppet.attacks import MLAttacker, CNNAttacker, AdversarialAttacker
-from ppet.side_channel import PowerAnalysisAttacker, TimingAnalysisAttacker, EMAnalysisAttacker, MultiChannelAttacker
-from ppet.physical_attacks import FaultInjectionAttacker, InvasiveAttacker, SupplyChainAttacker, ComprehensivePhysicalAttacker, AttackComplexity
+from .puf_models import BasePUF, ArbiterPUF, SRAMPUF, RingOscillatorPUF, ButterflyPUF
+from .attacks import MLAttacker, CNNAttacker, AdversarialAttacker
+from .side_channel import PowerAnalysisAttacker, TimingAnalysisAttacker, EMAnalysisAttacker, MultiChannelAttacker
+from .physical_attacks import FaultInjectionAttacker, InvasiveAttacker, SupplyChainAttacker, ComprehensivePhysicalAttacker, AttackComplexity
 
 
 class ThreatActor(Enum):

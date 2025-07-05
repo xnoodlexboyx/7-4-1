@@ -3,7 +3,7 @@ import argparse
 import os
 import sys
 sys.path.insert(0, "ppet-thesis")
-from puf_models import ArbiterPUF
+from ppet.puf_models import ArbiterPUF
 
 def main():
     parser = argparse.ArgumentParser(description="Generate PUF challenge/response data.")

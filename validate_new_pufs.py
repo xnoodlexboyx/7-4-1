@@ -8,9 +8,9 @@ import sys
 import numpy as np
 sys.path.insert(0, "ppet-thesis")
 
-from puf_models import ArbiterPUF, SRAMPUF, RingOscillatorPUF, ButterflyPUF
-from stressors import apply_temperature
-from analysis import bit_error_rate
+from ppet.puf_models import ArbiterPUF, SRAMPUF, RingOscillatorPUF, ButterflyPUF
+from ppet.stressors import apply_temperature
+from ppet.analysis import bit_error_rate
 
 def test_puf_basic_functionality():
     """Test basic functionality of all PUF types"""

@@ -1,4 +1,4 @@
-from ppet.puf_models import ArbiterPUF, SRAMPUF, RingOscillatorPUF, ButterflyPUF, BasePUF
+from .puf_models import ArbiterPUF, SRAMPUF, RingOscillatorPUF, ButterflyPUF, BasePUF
 import numpy as np
 from typing import Optional
 import copy
