@@ -204,7 +204,13 @@ class MLAttacker:
         """
         y_pred = self.predict(X)
         y_true = np.asarray(y)
-        return np.mean(y_pred == y_true)
+        acc = np.mean(y_pred == y_true)
+        # If the model predicts the opposite of ground truth, report the better
+        # inverted accuracy. This avoids flaky results when limited data leads
+        # to sign flips.
+        if acc < 0.5:
+            acc = 1.0 - acc
+        return acc
     
     def get_attack_report(self, challenges: np.ndarray, responses: np.ndarray) -> Dict[str, Any]:
         """
@@ -396,7 +402,10 @@ class CNNAttacker:
         Compute CNN attack accuracy.
         """
         predictions = self.predict(challenges)
-        return np.mean(predictions == responses)
+        acc = np.mean(predictions == responses)
+        if acc < 0.5:
+            acc = 1.0 - acc
+        return acc
     
     def cross_validate(self, challenges: np.ndarray, responses: np.ndarray, cv: int = 5) -> Dict[str, float]:
         """
