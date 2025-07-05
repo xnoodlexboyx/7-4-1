@@ -5,7 +5,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import cross_val_score
 from sklearn.metrics import classification_report
 from typing import Optional, Any, List, Tuple, Dict
-from ppet.puf_models import ArbiterPUF, SRAMPUF, RingOscillatorPUF, ButterflyPUF, BasePUF
+from .puf_models import ArbiterPUF, SRAMPUF, RingOscillatorPUF, ButterflyPUF, BasePUF
 import warnings
 warnings.filterwarnings('ignore')
 

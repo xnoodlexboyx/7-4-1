@@ -17,7 +17,7 @@ Designed for modeling sophisticated adversaries in military environments.
 import numpy as np
 from typing import Dict, Any, List, Tuple, Optional, Callable
 from dataclasses import dataclass
-from ppet.puf_models import BasePUF, ArbiterPUF, SRAMPUF, RingOscillatorPUF, ButterflyPUF
+from .puf_models import BasePUF, ArbiterPUF, SRAMPUF, RingOscillatorPUF, ButterflyPUF
 import scipy.signal
 import scipy.stats
 from sklearn.linear_model import LinearRegression

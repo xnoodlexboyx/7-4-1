@@ -118,10 +118,25 @@ def plot_bit_aliasing_heatmap(
     bit_entropies = np.array(bit_entropies)
     
     # Create correlation matrix between PUF instances
+    print(f"Responses matrix shape: {responses_matrix.shape}")
+    print(f"Sample responses: {responses_matrix[:3, :5]}")
+    
     correlation_matrix = np.corrcoef(responses_matrix)
     
-    # Perform hierarchical clustering for dendrograms
-    linkage_matrix = linkage(pdist(responses_matrix, metric='hamming'), method='ward')
+    # Add validation
+    if np.isnan(correlation_matrix).any():
+        print("Warning: NaN values in correlation matrix")
+        correlation_matrix = np.nan_to_num(correlation_matrix, nan=0.0)
+    
+    print(f"Correlation matrix shape: {correlation_matrix.shape}")
+    print(f"Correlation matrix min/max: {np.min(correlation_matrix):.3f}/{np.max(correlation_matrix):.3f}")
+    print(f"NaN values: {np.isnan(correlation_matrix).sum()}")
+    
+    # Perform hierarchical clustering for dendrograms  
+    if HAS_SCIPY:
+        linkage_matrix = linkage(pdist(responses_matrix, metric='hamming'), method='ward')
+    else:
+        linkage_matrix = None
     
     # Create first figure: Correlation heatmap with dendrograms
     fig1 = plt.figure(figsize=(16, 12))
@@ -154,27 +169,41 @@ def plot_bit_aliasing_heatmap(
                 text = ax_main.text(j, i, f'{correlation_matrix[i, j]:.2f}',
                                    ha="center", va="center", color="black", fontsize=8)
     
-    # Top dendrogram
-    ax_top = fig1.add_subplot(gs[0, 0], sharex=ax_main)
-    dend_top = dendrogram(linkage_matrix, orientation='top', ax=ax_top, 
-                         color_threshold=0.7*max(linkage_matrix[:,2]))
-    ax_top.set_xticks([])
-    ax_top.set_yticks([])
-    ax_top.spines['top'].set_visible(False)
-    ax_top.spines['right'].set_visible(False)
-    ax_top.spines['bottom'].set_visible(False)
-    ax_top.spines['left'].set_visible(False)
-    
-    # Right dendrogram
-    ax_right = fig1.add_subplot(gs[2, 2], sharey=ax_main)
-    dend_right = dendrogram(linkage_matrix, orientation='right', ax=ax_right,
-                           color_threshold=0.7*max(linkage_matrix[:,2]))
-    ax_right.set_xticks([])
-    ax_right.set_yticks([])
-    ax_right.spines['top'].set_visible(False)
-    ax_right.spines['right'].set_visible(False)
-    ax_right.spines['bottom'].set_visible(False)
-    ax_right.spines['left'].set_visible(False)
+    # Top dendrogram (only if scipy available)
+    if HAS_SCIPY and linkage_matrix is not None:
+        ax_top = fig1.add_subplot(gs[0, 0], sharex=ax_main)
+        dend_top = dendrogram(linkage_matrix, orientation='top', ax=ax_top, 
+                             color_threshold=0.7*max(linkage_matrix[:,2]))
+        ax_top.set_xticks([])
+        ax_top.set_yticks([])
+        ax_top.spines['top'].set_visible(False)
+        ax_top.spines['right'].set_visible(False)
+        ax_top.spines['bottom'].set_visible(False)
+        ax_top.spines['left'].set_visible(False)
+        
+        # Right dendrogram
+        ax_right = fig1.add_subplot(gs[2, 2], sharey=ax_main)
+        dend_right = dendrogram(linkage_matrix, orientation='right', ax=ax_right,
+                               color_threshold=0.7*max(linkage_matrix[:,2]))
+        ax_right.set_xticks([])
+        ax_right.set_yticks([])
+        ax_right.spines['top'].set_visible(False)
+        ax_right.spines['right'].set_visible(False)
+        ax_right.spines['bottom'].set_visible(False)
+        ax_right.spines['left'].set_visible(False)
+    else:
+        # Create empty subplots when scipy not available
+        ax_top = fig1.add_subplot(gs[0, 0])
+        ax_top.text(0.5, 0.5, 'Dendrogram requires scipy', ha='center', va='center', 
+                   transform=ax_top.transAxes)
+        ax_top.set_xticks([])
+        ax_top.set_yticks([])
+        
+        ax_right = fig1.add_subplot(gs[2, 2])
+        ax_right.text(0.5, 0.5, 'Dendrogram requires scipy', ha='center', va='center',
+                     transform=ax_right.transAxes, rotation=90)
+        ax_right.set_xticks([])
+        ax_right.set_yticks([])
     
     # Colorbar
     ax_cbar = fig1.add_subplot(gs[2, 1])
