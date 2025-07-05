@@ -18,11 +18,21 @@ import numpy as np
 from typing import Dict, Any, List, Tuple, Optional, Callable
 from dataclasses import dataclass
 from .puf_models import BasePUF, ArbiterPUF, SRAMPUF, RingOscillatorPUF, ButterflyPUF
-import scipy.signal
-import scipy.stats
-from sklearn.linear_model import LinearRegression
-from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans
+# Try to import optional packages
+try:
+    import scipy.signal
+    import scipy.stats
+    HAS_SCIPY = True
+except ImportError:
+    HAS_SCIPY = False
+
+try:
+    from sklearn.linear_model import LinearRegression
+    from sklearn.decomposition import PCA
+    from sklearn.cluster import KMeans
+    HAS_SKLEARN = True
+except ImportError:
+    HAS_SKLEARN = False
 
 
 @dataclass

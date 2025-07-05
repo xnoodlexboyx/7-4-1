@@ -20,9 +20,19 @@ from typing import Dict, Any, List, Tuple, Optional, Callable
 from dataclasses import dataclass
 from enum import Enum
 from .puf_models import BasePUF, ArbiterPUF, SRAMPUF, RingOscillatorPUF, ButterflyPUF
-import scipy.stats
-from sklearn.cluster import DBSCAN
-from sklearn.decomposition import PCA
+# Try to import optional packages
+try:
+    import scipy.stats
+    HAS_SCIPY = True
+except ImportError:
+    HAS_SCIPY = False
+
+try:
+    from sklearn.cluster import DBSCAN
+    from sklearn.decomposition import PCA
+    HAS_SKLEARN = True
+except ImportError:
+    HAS_SKLEARN = False
 
 
 class AttackComplexity(Enum):
@@ -943,7 +953,7 @@ if __name__ == "__main__":
 ")
     
     # Test with different PUF types
-    from puf_models import ArbiterPUF, SRAMPUF
+    from .puf_models import ArbiterPUF, SRAMPUF
     
     print("--- Arbiter PUF Physical Attack Analysis ---")
     arbiter_puf = ArbiterPUF(n_stages=64, seed=42)
