@@ -5,7 +5,8 @@ import argparse
 import json
 import matplotlib.pyplot as plt
 import sys
-sys.path.insert(0, "ppet-thesis")
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from ppet.puf_models import ArbiterPUF
 from ppet.stressors import apply_temperature
 from ppet.attacks import MLAttacker
