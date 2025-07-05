@@ -29,3 +29,4 @@ This repository provides a modular Python framework to:
 git clone <repo_url>
 cd ppet-thesis
 pip install -r requirements.txt
+# ppet-thesis
